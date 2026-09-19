@@ -8,8 +8,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// TestUimFepMarginAndLayoutHeight verifies that WindowSizeMsg allocates msg.Height - 2
-// to leave the bottom 2 rows free for uim-fep (Anthy) status and preedit lines.
+// TestUimFepMarginAndLayoutHeight verifies that WindowSizeMsg allocates msg.Height - 4
+// to leave the bottom rows free for uim-fep (Anthy) status, preedit, and candidate lines.
 func TestUimFepMarginAndLayoutHeight(t *testing.T) {
 	storage := NewStorage()
 	m, err := InitialModel(storage)
@@ -22,9 +22,9 @@ func TestUimFepMarginAndLayoutHeight(t *testing.T) {
 	updatedModel, _ := m.Update(tea.WindowSizeMsg{Width: terminalWidth, Height: terminalHeight})
 	m = updatedModel.(Model)
 
-	expectedHeight := terminalHeight - 2
+	expectedHeight := terminalHeight - 4
 	if m.height != expectedHeight {
-		t.Fatalf("expected m.height = %d (msg.Height - 2), got %d", expectedHeight, m.height)
+		t.Fatalf("expected m.height = %d (msg.Height - 4), got %d", expectedHeight, m.height)
 	}
 
 	view := m.View()
@@ -33,7 +33,7 @@ func TestUimFepMarginAndLayoutHeight(t *testing.T) {
 		t.Errorf("expected rendered view height to be %d, got %d", expectedHeight, renderedHeight)
 	}
 
-	// Verify footer is at the bottom of the rendered view (row H - 2, i.e. 3rd line from bottom)
+	// Verify footer is at the bottom of the rendered view (row H - 4, i.e. 5th line from bottom)
 	lines := strings.Split(view, "\n")
 	if len(lines) != expectedHeight {
 		t.Errorf("expected %d lines, got %d", expectedHeight, len(lines))

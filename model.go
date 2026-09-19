@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -172,7 +174,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.width < 0 {
 			m.width = 0
 		}
-		m.height = msg.Height - 2
+		// Reserve margin lines at the bottom for uim-fep (preedit buffer + status line).
+		// Default to 4 lines (configurable via TSUB_BOTTOM_MARGIN env var).
+		bottomMargin := 4
+		if val := os.Getenv("TSUB_BOTTOM_MARGIN"); val != "" {
+			if n, err := strconv.Atoi(val); err == nil && n >= 0 {
+				bottomMargin = n
+			}
+		}
+		m.height = msg.Height - bottomMargin
 		if m.height < 0 {
 			m.height = 0
 		}
@@ -224,8 +234,8 @@ func (m *Model) resizeComponents() {
 	// Total fixed height: 1 + 1 + 5 + 1 + 1 + 1 = 10 lines
 	fixedHeight := 10
 	vpHeight := m.height - fixedHeight
-	if vpHeight < 3 {
-		vpHeight = 3
+	if vpHeight < 1 {
+		vpHeight = 1
 	}
 
 	// Timeline viewport spans full terminal width
