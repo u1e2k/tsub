@@ -1,0 +1,8 @@
+# Binaries
+tsub
+tsub.exe
+tsub_*
+*.exe
+
+# Local test vault
+vault/
