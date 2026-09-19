@@ -91,6 +91,20 @@ export TSUB_VAULT_DIR="/mnt/storage/ObsidianVault/Daily"
 ./tsub
 ```
 
+### フレームバッファ / Linux コンソール環境での注意点
+
+Raspberry Pi 等のフレームバッファ環境（yaft や標準コンソール）で実行した際、起動時に端末の応答コード（`1;?22;4r` 等のエスケープシーケンス）が一瞬画面に漏れ出る場合があります。
+
+これは端末へのケーパビリティ自動問い合わせに対するエコーバックが原因です。以下のエイリアスを `~/.bashrc` に設定して起動時のエコーを無効化することで、ゴミ文字を出さずにクリーンに起動できます。
+
+・設定コマンド:
+```bash
+echo 'alias tsub="stty -echo; /usr/local/bin/tsub; stty echo"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+※ `install.sh` を使用した場合も、上記エイリアスの登録を推奨します。
+
 ## Workflow
 
 ### 1. Starting Up

@@ -40,7 +40,7 @@ var (
 	// Editor styles
 	editorActiveBox = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(colorSky).
+			BorderForeground(lipgloss.Color("4")). // ANSI color 4 (Blue)
 			Padding(0, 1)
 
 	editorInactiveBox = lipgloss.NewStyle().

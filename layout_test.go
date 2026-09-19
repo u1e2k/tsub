@@ -80,7 +80,7 @@ func TestNoHardwareCursorEscapeSequences(t *testing.T) {
 	}
 }
 
-// TestPlainPrompt verifies that textarea.Prompt is a plain single space with no escape codes.
+// TestPlainPrompt verifies that textarea.Prompt is a plain prompt with no escape codes.
 func TestPlainPrompt(t *testing.T) {
 	storage := NewStorage()
 	m, err := InitialModel(storage)
@@ -88,8 +88,8 @@ func TestPlainPrompt(t *testing.T) {
 		t.Fatalf("failed to init model: %v", err)
 	}
 
-	if m.textarea.Prompt != " " {
-		t.Errorf("expected prompt to be \" \", got %q", m.textarea.Prompt)
+	if m.textarea.Prompt != "> " {
+		t.Errorf("expected prompt to be \"> \", got %q", m.textarea.Prompt)
 	}
 
 	// Render prompt style to verify it has no ANSI escape codes
@@ -103,8 +103,8 @@ func TestPlainPrompt(t *testing.T) {
 	}
 }
 
-// TestCardWidthAndCentering verifies that the editor card and timeline are bounded
-// to 70%~75% of screen width (max 60 chars) and centered horizontally with margins.
+// TestCardWidthAndCentering verifies that the editor card and timeline are sized
+// to ~70% of screen width (min 40 chars) and centered horizontally with margins.
 func TestCardWidthAndCentering(t *testing.T) {
 	storage := NewStorage()
 	m, err := InitialModel(storage)
@@ -112,38 +112,45 @@ func TestCardWidthAndCentering(t *testing.T) {
 		t.Fatalf("failed to init model: %v", err)
 	}
 
-	// Case 1: Wide terminal (100 cols) -> capped at 60
+	// Case 1: 100 cols -> 70% = 70
 	updatedModel, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	m = updatedModel.(Model)
 
-	if m.viewport.Width != 60 {
-		t.Errorf("expected box width to be capped at 60 for 100-col screen, got %d", m.viewport.Width)
+	if m.viewport.Width != 70 {
+		t.Errorf("expected box width to be 70 for 100-col screen, got %d", m.viewport.Width)
 	}
 
-	// Textarea inner text width is (boxWidth - 4) - promptWidth(1) = 55
-	if m.textarea.Width() != 55 {
-		t.Errorf("expected textarea text width to be 55, got %d", m.textarea.Width())
+	// Textarea inner text width is (boxWidth - 4) - promptWidth(2) = 64
+	if m.textarea.Width() != 64 {
+		t.Errorf("expected textarea text width to be 64, got %d", m.textarea.Width())
 	}
 
 	// Verify horizontal centering (lines should have leading spaces)
 	view := m.View()
 	lines := strings.Split(view, "\n")
-	// Expected margin on each side: (100 - 60) / 2 = 20 spaces
+	// Expected card outer width is 70 + 2 = 72, margin on each side: (100 - 72) / 2 = 14 spaces
 	hasMargin := false
 	for _, line := range lines {
-		if strings.HasPrefix(line, "                    ") {
+		if strings.HasPrefix(line, "              ") {
 			hasMargin = true
 			break
 		}
 	}
 	if !hasMargin {
-		t.Errorf("expected centered view to have leading margins of ~20 spaces on 100-col screen")
+		t.Errorf("expected centered view to have leading margins on 100-col screen")
 	}
 
-	// Case 2: Standard terminal (80 cols) -> 72% of 80 = 57 cols
+	// Case 2: Standard terminal (80 cols) -> 70% of 80 = 56 cols
 	updatedModel80, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
 	m80 := updatedModel80.(Model)
-	if m80.viewport.Width < 50 || m80.viewport.Width > 60 {
-		t.Errorf("expected box width for 80-col screen to be 50~60 chars, got %d", m80.viewport.Width)
+	if m80.viewport.Width != 56 {
+		t.Errorf("expected box width for 80-col screen to be 56, got %d", m80.viewport.Width)
+	}
+
+	// Case 3: Narrow terminal (50 cols) -> 70% = 35, clamped to min 40
+	updatedModel50, _ := m.Update(tea.WindowSizeMsg{Width: 50, Height: 30})
+	m50 := updatedModel50.(Model)
+	if m50.viewport.Width != 40 {
+		t.Errorf("expected box width for 50-col screen to be min 40, got %d", m50.viewport.Width)
 	}
 }
