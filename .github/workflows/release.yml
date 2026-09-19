@@ -98,6 +98,11 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -106,15 +111,18 @@ jobs:
 
       - name: Create GitHub Release
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ needs.version.outputs.tag_name }}
         run: |
           if [ "${{ github.ref_type }}" = "tag" ]; then
             gh release create "$TAG_NAME" dist/* \
+              --repo "${{ github.repository }}" \
               --title "$TAG_NAME" \
               --generate-notes
           else
             gh release create "$TAG_NAME" dist/* \
+              --repo "${{ github.repository }}" \
               --target "${{ github.sha }}" \
               --title "$TAG_NAME" \
               --generate-notes
