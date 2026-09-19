@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"time"
@@ -41,6 +42,31 @@ func runUpdate() {
 	}
 }
 
+// cursorWriter wraps stdout to reposition the hardware cursor at the end of
+// every Bubble Tea flush, neutralizing Bubble Tea's default trailing ansi.CursorPosition
+// and accurately positioning the cursor inside the input box for uim-fep (Anthy).
+type cursorWriter struct {
+	out io.Writer
+}
+
+func (w *cursorWriter) Write(p []byte) (int, error) {
+	n, err := w.out.Write(p)
+	if err != nil {
+		return n, err
+	}
+	cy, cx, visible := GetCursorPosition()
+	if cy > 0 && cx > 0 {
+		var seq string
+		if visible {
+			seq = fmt.Sprintf("\x1b[?25h\x1b[%d;%dH", cy, cx)
+		} else {
+			seq = fmt.Sprintf("\x1b[?25l\x1b[%d;%dH", cy, cx)
+		}
+		_, _ = w.out.Write([]byte(seq))
+	}
+	return n, nil
+}
+
 func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
@@ -76,10 +102,13 @@ func main() {
 
 	// Disable bracketed paste to prevent sending unsupported \x1b[?2004h sequences
 	// on framebuffer/console and uim-fep environments.
+	// Use cursorWriter with tea.WithOutput to position the hardware cursor after every render.
+	cw := &cursorWriter{out: os.Stdout}
 	p := tea.NewProgram(
 		model,
 		tea.WithAltScreen(),
 		tea.WithoutBracketedPaste(),
+		tea.WithOutput(cw),
 	)
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error running tsub: %v\n", err)

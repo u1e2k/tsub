@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textarea"
@@ -13,6 +14,29 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 )
+
+var (
+	cursorMutex         sync.Mutex
+	globalCursorY       int
+	globalCursorX       int
+	globalCursorVisible bool
+)
+
+// SetCursorPosition sets the target hardware cursor position and visibility.
+func SetCursorPosition(y, x int, visible bool) {
+	cursorMutex.Lock()
+	defer cursorMutex.Unlock()
+	globalCursorY = y
+	globalCursorX = x
+	globalCursorVisible = visible
+}
+
+// GetCursorPosition returns the target hardware cursor position and visibility.
+func GetCursorPosition() (y, x int, visible bool) {
+	cursorMutex.Lock()
+	defer cursorMutex.Unlock()
+	return globalCursorY, globalCursorX, globalCursorVisible
+}
 
 // Mode represents the current interaction mode.
 type Mode int
@@ -397,13 +421,12 @@ func (m Model) View() string {
 		textWidth := m.textarea.LineInfo().CharOffset
 		targetX := 1 + leftMargin + 1 + 1 + promptWidth + textWidth
 
-		// Move hardware cursor to input position and ensure it is visible.
-		// This enables uim-fep (Anthy) to render the preedit string directly inside the input box!
+		SetCursorPosition(targetY, targetX, true)
 		return fullView + fmt.Sprintf("\x1b[?25h\x1b[%d;%dH", targetY, targetX)
 	}
 
 	// In View mode, hide hardware cursor and park it on the safe margin row below the footer
-	// so accidental keystrokes with IME turned on do not overwrite the footer bar.
 	parkRow := m.height + 1
+	SetCursorPosition(parkRow, 1, false)
 	return fullView + fmt.Sprintf("\x1b[?25l\x1b[%d;1H", parkRow)
 }

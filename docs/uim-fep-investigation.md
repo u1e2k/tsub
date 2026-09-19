@@ -104,11 +104,85 @@ Bubble Tea などの多くの TUI フレームワークでは、`View()` メソ�
    ```
    > **Note**: `m.textarea.LineInfo().CharOffset` は `uniseg` / `runewidth` を用いて日本語全角文字（幅2）を正しく計算しているため、日本語混じりのテキストでも正確なカラム位置を指します。
 
-3. **シーケンスの発行**:
-   `View()` の末尾にカーソル表示（`\x1b[?25h`）と絶対座標移動（`\x1b[<Y>;<X>H`）を付与：
+### 3.4 Bubble Tea の致命的な挙動: standardRenderer によるカーソル強制上書き
+さらに深い調査により、TUI 側（Bubble Tea v1 の `standard_renderer.go`）に決定的な動作があることが判明しました。
+
+```go
+// github.com/charmbracelet/bubbletea/standard_renderer.go より抜粋
+func (r *standardRenderer) flush() {
+    ...
+    // Make sure the cursor is at the start of the last line to keep rendering
+    // behavior consistent.
+    if r.altScreenActive {
+        buf.WriteString(ansi.CursorPosition(0, len(newLines)))
+    }
+    _, _ = r.out.Write(buf.Bytes())
+}
+```
+
+- Bubble Tea は毎フレームを描画する際、**`View()` が返した文字列をターミナルに書き出した直後に、自動的に `ansi.CursorPosition(0, len(newLines))`（最終行のカラム 0、つまりフッター行の先頭）を強制付与して出力する** 仕様になっていました。
+- そのため、単に `View()` の戻り値末尾に ANSI エスケープシーケンス（`\x1b[%d;%dH`）を付与しても、**Bubble Tea の内部レンダラーがその直後にフッター行へのカーソル移動コマンドを送り直して上書きしてしまう**ため、カーソルがフッター行へ引き戻されていたのです。
+
+---
+
+## 4. 解決策の設計と実装 (Solution Architecture)
+
+Bubble Tea のレンダラーによる強制カーソル移動を無効化し、真のハードウェアカーソル位置を制御するため、**出力ストリームのラップ（`cursorWriter`）** を実装しました。
+
+### 4.1 出力レイヤーでのカーソル制御 (`cursorWriter`)
+Bubble Tea には `tea.WithOutput(io.Writer)` オプションが用意されています。これを利用して `os.Stdout` をラップする `cursorWriter` を作成し、Bubble Tea がフレームを出力した**直後**に希望のカーソル位置シーケンスを発行します。
+
+```go
+// main.go
+type cursorWriter struct {
+	out io.Writer
+}
+
+func (w *cursorWriter) Write(p []byte) (int, error) {
+	n, err := w.out.Write(p)
+	if err != nil {
+		return n, err
+	}
+	cy, cx, visible := GetCursorPosition()
+	if cy > 0 && cx > 0 {
+		var seq string
+		if visible {
+			seq = fmt.Sprintf("\x1b[?25h\x1b[%d;%dH", cy, cx)
+		} else {
+			seq = fmt.Sprintf("\x1b[?25l\x1b[%d;%dH", cy, cx)
+		}
+		_, _ = w.out.Write([]byte(seq))
+	}
+	return n, nil
+}
+```
+
+これにより、Bubble Tea レンダラーの出力（フッター行への移動）が端末に届いた直後、瞬時に正しいカーソル位置（入力ボックス内または安全マージン行）へ端末カーソルが上書き再配置されます。
+
+### 4.2 入力モード (`ModeInput`)
+ユーザーが入力枠にフォーカスしているときは、エディタ枠内の現在入力行・列へハードウェアカーソルを移動させます。
+
+#### 座標の正確な計算
+端末の画面座標系（1-indexed: `(row, col) = (1, 1)` が左上）に合わせた計算式：
+
+1. **行位置 (`targetY`)**:
    ```go
-   return fullView + fmt.Sprintf("\x1b[?25h\x1b[%d;%dH", targetY, targetX)
+   // 1 (基準) + ヘッダー高 + スペーサー + タイトル高 + 枠線上ボーダー(1) + テキストエリア内行オフセット
+   targetY := 1 + headerHeight + spacer1 + editorTitleHeight + 1 + m.textarea.LineInfo().RowOffset
    ```
+2. **列位置 (`targetX`)**:
+   `tsub` では入力カードを中央寄せ (`PlaceHorizontal`) にしているため、左右の余白（マージン）を考慮します。
+   ```go
+   leftMargin := (m.width - cardWidth) / 2
+   // 1 (基準) + 左マージン + 左ボーダー(1: ┃) + 左パディング(1) + プロンプト幅 + テキストエリア内文字幅
+   promptWidth := runewidth.StringWidth(m.textarea.Prompt)
+   textWidth := m.textarea.LineInfo().CharOffset
+   targetX := 1 + leftMargin + 1 + 1 + promptWidth + textWidth
+   ```
+   > **Note**: `m.textarea.LineInfo().CharOffset` は `uniseg` / `runewidth` を用いて日本語全角文字（幅2）を正しく計算しているため、日本語混じりのテキストでも正確なカラム位置を指します。
+
+3. **カーソル同期**:
+   `View()` 内で `SetCursorPosition(targetY, targetX, true)` を呼び出すことで、`cursorWriter` 経由で毎フレームこの位置へ端末カーソルが同期されます。
 
 これにより、`uim-fep` がカーソル位置を問い合わせた際に入力ボックスの現在入力位置が返るため、**入力枠内のその場（On-The-Spot）に未確定文字列が綺麗に描画**されます。
 

@@ -1,12 +1,40 @@
 package main
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+// TestCursorWriter verifies that cursorWriter appends the desired hardware cursor
+// positioning ANSI escape sequence after Bubble Tea's output, ensuring the cursor
+// is moved inside the textarea during ModeInput and parked/hidden during ModeView.
+func TestCursorWriter(t *testing.T) {
+	var buf bytes.Buffer
+	cw := &cursorWriter{out: &buf}
+
+	// Test ModeInput (visible, inside textarea)
+	SetCursorPosition(5, 18, true)
+	_, _ = cw.Write([]byte("rendered frame\x1b[27;H"))
+	got := buf.String()
+	expectedSeq := "\x1b[?25h\x1b[5;18H"
+	if !strings.HasSuffix(got, expectedSeq) {
+		t.Errorf("expected output to end with %q, got %q", expectedSeq, got)
+	}
+
+	// Test ModeView (hidden, parked)
+	buf.Reset()
+	SetCursorPosition(28, 1, false)
+	_, _ = cw.Write([]byte("rendered frame\x1b[27;H"))
+	gotView := buf.String()
+	expectedViewSeq := "\x1b[?25l\x1b[28;1H"
+	if !strings.HasSuffix(gotView, expectedViewSeq) {
+		t.Errorf("expected view mode output to end with %q, got %q", expectedViewSeq, gotView)
+	}
+}
 
 // TestUimFepMarginAndLayoutHeight verifies that WindowSizeMsg allocates msg.Height - 3
 // to leave the bottom rows free for uim-fep (Anthy) status and preedit lines,
