@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -17,15 +18,35 @@ func printHelp() {
 	fmt.Printf("Usage:\n")
 	fmt.Printf("  tsub [options]\n\n")
 	fmt.Printf("Options:\n")
+	fmt.Printf("  -u, --update   Update tsub to the latest version\n")
 	fmt.Printf("  -v, --version  Show version information\n")
 	fmt.Printf("  -h, --help     Show this help message\n\n")
 	fmt.Printf("Environment Variables:\n")
 	fmt.Printf("  TSUB_VAULT_DIR Directory for daily markdown files (default: ~/vault/Daily)\n")
 }
 
+func runUpdate() {
+	fmt.Println("tsub を最新バージョンにアップデートしています...")
+	shell := "bash"
+	if _, err := exec.LookPath("bash"); err != nil {
+		shell = "sh"
+	}
+	cmd := exec.Command(shell, "-c", "curl -fsSL https://raw.githubusercontent.com/u1e2k/tsub/main/install.sh | bash")
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "アップデート中にエラーが発生しました: %v\n", err)
+		os.Exit(1)
+	}
+}
+
 func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
+		case "-u", "--update", "update":
+			runUpdate()
+			return
 		case "-v", "--version", "version":
 			fmt.Printf("tsub version %s\n", Version)
 			return

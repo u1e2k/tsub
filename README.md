@@ -69,12 +69,19 @@ Pre-compiled standalone binaries for Linux are available on the [Releases](https
 
 **Start the application:**
 ```bash
-./tsub
+tsub
 ```
 
 **Check the version:**
 ```bash
-./tsub --version
+tsub -v
+# or tsub --version
+```
+
+**Update to the latest release:**
+```bash
+tsub -u
+# or tsub --update
 ```
 
 ### Configuration
