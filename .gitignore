@@ -3,6 +3,8 @@ tsub
 tsub.exe
 tsub_*
 *.exe
+dist/
 
 # Local test vault
 vault/
+
