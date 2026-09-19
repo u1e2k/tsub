@@ -45,8 +45,35 @@ func runUpdate() {
 // cursorWriter wraps stdout to reposition the hardware cursor at the end of
 // every Bubble Tea flush, neutralizing Bubble Tea's default trailing ansi.CursorPosition
 // and accurately positioning the cursor inside the input box for uim-fep (Anthy).
+// It implements term.File (ReadWriteCloser + Fd) so Bubble Tea can detect terminal size.
 type cursorWriter struct {
-	out io.Writer
+	file *os.File
+	out  io.Writer
+}
+
+func newCursorWriter(f *os.File) *cursorWriter {
+	return &cursorWriter{file: f, out: f}
+}
+
+func (w *cursorWriter) Read(p []byte) (int, error) {
+	if w.file != nil {
+		return w.file.Read(p)
+	}
+	return 0, io.EOF
+}
+
+func (w *cursorWriter) Close() error {
+	if w.file != nil {
+		return w.file.Close()
+	}
+	return nil
+}
+
+func (w *cursorWriter) Fd() uintptr {
+	if w.file != nil {
+		return w.file.Fd()
+	}
+	return 0
 }
 
 func (w *cursorWriter) Write(p []byte) (int, error) {
@@ -103,7 +130,7 @@ func main() {
 	// Disable bracketed paste to prevent sending unsupported \x1b[?2004h sequences
 	// on framebuffer/console and uim-fep environments.
 	// Use cursorWriter with tea.WithOutput to position the hardware cursor after every render.
-	cw := &cursorWriter{out: os.Stdout}
+	cw := newCursorWriter(os.Stdout)
 	p := tea.NewProgram(
 		model,
 		tea.WithAltScreen(),

@@ -90,14 +90,18 @@ func InitialModel(storage *Storage) (Model, error) {
 		textarea: ta,
 		viewport: vp,
 		date:     today,
+		width:    80,
+		height:   21, // 24 - 3 default bottom margin
+		ready:    true,
 	}
+	m.resizeComponents()
 
 	return m, nil
 }
 
 // Init starts bubbletea loop.
 func (m Model) Init() tea.Cmd {
-	return textarea.Blink
+	return tea.Batch(textarea.Blink, tea.WindowSize())
 }
 
 // Update handles user inputs and window resize events.
