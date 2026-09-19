@@ -112,6 +112,9 @@ source ~/.bashrc
 
 ※ `install.sh` を使用した場合も、上記エイリアスの登録を推奨します。
 
+#### 日本語入力 (uim-fep / Anthy) との連携
+`uim-fep` 等のコンソール日本語入力環境におけるカーソル位置同期と Preedit 描画の仕組みについては、[docs/uim-fep-investigation.md](docs/uim-fep-investigation.md) に詳細な調査結果と設計仕様をまとめています。
+
 ## Workflow
 
 ### 1. Starting Up
