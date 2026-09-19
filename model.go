@@ -193,20 +193,20 @@ func (m *Model) resizeComponents() {
 		return
 	}
 
-	// Slit width: 85% to 90% of screen width, bounded sensibly
-	slitWidth := int(float64(m.width) * 0.88)
-	if slitWidth < 30 {
-		slitWidth = m.width - 2
+	// Card width: 70% to 75% of screen width, bounded by 50~60 chars max
+	boxWidth := int(float64(m.width) * 0.72)
+	if boxWidth > 60 {
+		boxWidth = 60
 	}
-	if slitWidth > 120 {
-		slitWidth = 120
+	if boxWidth < 30 {
+		boxWidth = m.width - 4
 	}
-	if slitWidth <= 0 {
-		slitWidth = 20
+	if boxWidth < 20 {
+		boxWidth = 20
 	}
 
 	// Textarea inner width (accounting for border and padding = 4 chars)
-	taInnerWidth := slitWidth - 4
+	taInnerWidth := boxWidth - 4
 	if taInnerWidth < 10 {
 		taInnerWidth = 10
 	}
@@ -215,7 +215,7 @@ func (m *Model) resizeComponents() {
 	// Vertical layout:
 	// Header: 1 line
 	// Spacer: 1 line
-	// Slit Editor: 5 lines (title 1 line + border & content 4 lines)
+	// Editor Box: 5 lines (title 1 line + border & content 4 lines)
 	// Spacer: 1 line
 	// Spacer: 1 line
 	// Footer: 1 line
@@ -226,7 +226,7 @@ func (m *Model) resizeComponents() {
 		vpHeight = 3
 	}
 
-	m.viewport.Width = slitWidth
+	m.viewport.Width = boxWidth
 	m.viewport.Height = vpHeight
 	m.updateViewportContent()
 }
@@ -259,18 +259,22 @@ func (m Model) View() string {
 	dateStr := m.date.Format("2006-01-02 (Mon)")
 	brand := headerBrand.Render(" tsub ")
 	headerInfo := fmt.Sprintf(" %s | 投稿数: %s ", dateStr, headerCountBadge.Render(fmt.Sprintf("%d", len(m.posts))))
-	headerBar := headerStyle.Render(brand + headerInfo)
+	headerBar := headerStyle.Width(m.viewport.Width).Render(brand + headerInfo)
 
-	// 2. Slit Editor Box
+	// 2. Editor Box (Input Card)
 	var editorTitle string
 	editorBoxStyle := editorActiveBox
 	if m.mode == ModeInput {
-		editorTitle = editorTitleActive.Render("💭 いまどうしてる？") + " " + editorTitleDim.Render("(Enter: 投稿 / Esc: 閲覧)")
+		if m.viewport.Width >= 50 {
+			editorTitle = editorTitleActive.Render("💭 いまどうしてる？") + " " + editorTitleDim.Render("(Enter: 投稿 / Esc: 閲覧)")
+		} else {
+			editorTitle = editorTitleActive.Render("💭 いまどうしてる？") + " " + editorTitleDim.Render("(Enter: 投稿)")
+		}
 	} else {
 		editorBoxStyle = editorInactiveBox
 		editorTitle = editorTitleDim.Render("💭 いまどうしてる？ (i: 投稿入力)")
 	}
-	editorBox := editorBoxStyle.Width(m.viewport.Width).Render(m.textarea.View())
+	editorBox := editorBoxStyle.Width(m.viewport.Width - 2).Render(m.textarea.View())
 	editorRendered := lipgloss.JoinVertical(
 		lipgloss.Left,
 		editorTitle,
@@ -299,7 +303,7 @@ func (m Model) View() string {
 			footerKeyStyle.Render("Ctrl+C/Q:"), "終了",
 		)
 	}
-	footerBar := footerStyle.Render(modeBadge + " " + keyHelp)
+	footerBar := footerStyle.Width(m.viewport.Width).Render(modeBadge + " " + keyHelp)
 
 	// Compose layout vertically
 	content := lipgloss.JoinVertical(

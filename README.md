@@ -79,10 +79,15 @@ Pre-compiled standalone binaries for Linux are available on the [Releases](https
 
 ### Configuration
 
-By default, `tsub` looks for your Obsidian Vault at `./vault`. You can change this by setting the `TSUB_VAULT_DIR` environment variable:
+By default, `tsub` stores your daily micro-posts at `~/vault/Daily` (`$HOME/vault/Daily`). You can customize the storage directory by setting the `TSUB_VAULT_DIR` environment variable (supports `~` expansion):
 
 ```bash
-export TSUB_VAULT_DIR="/path/to/your/vault"
+# Example 1: Use a custom Obsidian vault directory
+export TSUB_VAULT_DIR="~/Documents/Obsidian/Daily"
+./tsub
+
+# Example 2: Use an absolute path
+export TSUB_VAULT_DIR="/mnt/storage/ObsidianVault/Daily"
 ./tsub
 ```
 

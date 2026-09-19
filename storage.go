@@ -23,13 +23,45 @@ type Storage struct {
 	baseDir string
 }
 
-// NewStorage creates a new Storage instance based on TSUB_VAULT_DIR or default.
-func NewStorage() *Storage {
-	baseDir := os.Getenv("TSUB_VAULT_DIR")
-	if baseDir == "" {
-		baseDir = filepath.Join(".", "vault", "Daily")
+// expandHome expands a leading "~" or "~/" or "~\ " into the user's home directory.
+func expandHome(path string) string {
+	if path == "" {
+		return path
 	}
-	return &Storage{baseDir: baseDir}
+	if path == "~" {
+		if home, err := os.UserHomeDir(); err == nil {
+			return home
+		}
+		return path
+	}
+	if strings.HasPrefix(path, "~/") || strings.HasPrefix(path, "~\\") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, path[2:])
+		}
+	}
+	return path
+}
+
+// resolveVaultDir determines the directory path to use for daily notes:
+// 1. If TSUB_VAULT_DIR environment variable is set, use it (with ~ expanded).
+// 2. Otherwise default to ~/vault/Daily (with home dir expanded).
+// Fallback: ./vault/Daily if home directory cannot be determined.
+func resolveVaultDir() string {
+	envDir := os.Getenv("TSUB_VAULT_DIR")
+	if envDir != "" {
+		return expandHome(envDir)
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return filepath.Join(".", "vault", "Daily")
+	}
+	return filepath.Join(home, "vault", "Daily")
+}
+
+// NewStorage creates a new Storage instance based on TSUB_VAULT_DIR or default (~/vault/Daily).
+func NewStorage() *Storage {
+	return &Storage{baseDir: resolveVaultDir()}
 }
 
 // GetDailyFilePath returns the path for the given date's markdown file.

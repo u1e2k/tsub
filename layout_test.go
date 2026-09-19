@@ -102,3 +102,48 @@ func TestPlainPrompt(t *testing.T) {
 		t.Errorf("blurred prompt should not contain ANSI escape codes, got %q", renderedBlurred)
 	}
 }
+
+// TestCardWidthAndCentering verifies that the editor card and timeline are bounded
+// to 70%~75% of screen width (max 60 chars) and centered horizontally with margins.
+func TestCardWidthAndCentering(t *testing.T) {
+	storage := NewStorage()
+	m, err := InitialModel(storage)
+	if err != nil {
+		t.Fatalf("failed to init model: %v", err)
+	}
+
+	// Case 1: Wide terminal (100 cols) -> capped at 60
+	updatedModel, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = updatedModel.(Model)
+
+	if m.viewport.Width != 60 {
+		t.Errorf("expected box width to be capped at 60 for 100-col screen, got %d", m.viewport.Width)
+	}
+
+	// Textarea inner text width is (boxWidth - 4) - promptWidth(1) = 55
+	if m.textarea.Width() != 55 {
+		t.Errorf("expected textarea text width to be 55, got %d", m.textarea.Width())
+	}
+
+	// Verify horizontal centering (lines should have leading spaces)
+	view := m.View()
+	lines := strings.Split(view, "\n")
+	// Expected margin on each side: (100 - 60) / 2 = 20 spaces
+	hasMargin := false
+	for _, line := range lines {
+		if strings.HasPrefix(line, "                    ") {
+			hasMargin = true
+			break
+		}
+	}
+	if !hasMargin {
+		t.Errorf("expected centered view to have leading margins of ~20 spaces on 100-col screen")
+	}
+
+	// Case 2: Standard terminal (80 cols) -> 72% of 80 = 57 cols
+	updatedModel80, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
+	m80 := updatedModel80.(Model)
+	if m80.viewport.Width < 50 || m80.viewport.Width > 60 {
+		t.Errorf("expected box width for 80-col screen to be 50~60 chars, got %d", m80.viewport.Width)
+	}
+}

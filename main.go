@@ -6,9 +6,14 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 func main() {
+	// Explicitly set dark background to prevent lipgloss/termenv from sending
+	// terminal capability query sequences (OSC 11 / CSI 6 n) before AltScreen.
+	lipgloss.SetHasDarkBackground(true)
+
 	storage := NewStorage()
 
 	// Ensure today's daily file exists
@@ -23,7 +28,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	p := tea.NewProgram(model, tea.WithAltScreen())
+	// Disable bracketed paste to prevent sending unsupported \x1b[?2004h sequences
+	// on framebuffer/console and uim-fep environments.
+	p := tea.NewProgram(
+		model,
+		tea.WithAltScreen(),
+		tea.WithoutBracketedPaste(),
+	)
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error running tsub: %v\n", err)
 		os.Exit(1)

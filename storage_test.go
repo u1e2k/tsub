@@ -100,3 +100,48 @@ func TestStorage_AppendAndLoadPosts(t *testing.T) {
 		t.Errorf("expected posts[2] time to be 12:00, got: %s", posts[2].TimeStr)
 	}
 }
+
+func TestStorage_HomeDirExpansionAndDefault(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("skipping test because user home dir is not available")
+	}
+
+	// 1. Default should be ~/vault/Daily (without TSUB_VAULT_DIR set)
+	origEnv := os.Getenv("TSUB_VAULT_DIR")
+	defer os.Setenv("TSUB_VAULT_DIR", origEnv)
+
+	os.Unsetenv("TSUB_VAULT_DIR")
+	storage := NewStorage()
+	expectedDefault := filepath.Join(home, "vault", "Daily")
+	if storage.baseDir != expectedDefault {
+		t.Errorf("expected default baseDir to be %q, got %q", expectedDefault, storage.baseDir)
+	}
+
+	// 2. TSUB_VAULT_DIR with tilde expansion (~/my-obsidian/Daily)
+	os.Setenv("TSUB_VAULT_DIR", "~/my-obsidian/Daily")
+	storageTilde := NewStorage()
+	expectedTilde := filepath.Join(home, "my-obsidian", "Daily")
+	if storageTilde.baseDir != expectedTilde {
+		t.Errorf("expected tilde expanded baseDir to be %q, got %q", expectedTilde, storageTilde.baseDir)
+	}
+
+	// 3. TSUB_VAULT_DIR with absolute path
+	customPath := filepath.Join(os.TempDir(), "test-vault", "Daily")
+	os.Setenv("TSUB_VAULT_DIR", customPath)
+	storageCustom := NewStorage()
+	if storageCustom.baseDir != customPath {
+		t.Errorf("expected custom baseDir to be %q, got %q", customPath, storageCustom.baseDir)
+	}
+
+	// 4. Test expandHome helper function directly
+	if got := expandHome("~"); got != home {
+		t.Errorf("expected expandHome(\"~\") = %q, got %q", home, got)
+	}
+	if got := expandHome("~/sub/dir"); got != filepath.Join(home, "sub", "dir") {
+		t.Errorf("expected expandHome(\"~/sub/dir\") = %q, got %q", filepath.Join(home, "sub", "dir"), got)
+	}
+	if got := expandHome("/plain/path"); got != "/plain/path" {
+		t.Errorf("expected non-tilde path to be untouched, got %q", got)
+	}
+}
