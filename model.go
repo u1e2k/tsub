@@ -386,15 +386,14 @@ func (m Model) View() string {
 	statusBar := footerStyle.Width(statusInnerWidth).Render(modeBadge + " " + keyHelp)
 
 	// Compose layout vertically with adaptive spacers based on height.
-	// Shift mode status bar directly below the editor card, keeping it completely
-	// separate from the bottom margin where uim-fep (Anthy) draws preedit and candidates.
+	// Place mode status bar (footer) directly above the bottom margin (Row m.height),
+	// with the hardware cursor parked on Row m.height + 1 for uim-fep preedit.
 	var sections []string
 	sections = append(sections, headerBar)
 	if m.height >= 16 {
 		sections = append(sections, "")
 	}
 	sections = append(sections, editorRendered)
-	sections = append(sections, statusBar)
 	if m.height >= 13 {
 		sections = append(sections, "")
 	}
@@ -402,6 +401,7 @@ func (m Model) View() string {
 	if m.height >= 15 {
 		sections = append(sections, "")
 	}
+	sections = append(sections, statusBar)
 
 	fullView := lipgloss.JoinVertical(lipgloss.Left, sections...)
 

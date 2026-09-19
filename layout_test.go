@@ -67,8 +67,9 @@ func TestUimFepMarginAndLayoutHeight(t *testing.T) {
 	if len(lines) != expectedHeight {
 		t.Errorf("expected %d lines, got %d", expectedHeight, len(lines))
 	}
-	if !strings.Contains(view, "Enter:") {
-		t.Errorf("expected view to contain status bar with 'Enter:'")
+	lastLine := lines[len(lines)-1]
+	if !strings.Contains(lastLine, "Enter:") {
+		t.Errorf("expected footer with 'Enter:' on the last rendered line, got: %q", lastLine)
 	}
 
 	// Case 2: Compact screen (13 rows, e.g. Raspberry Pi handheld LCD)

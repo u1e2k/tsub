@@ -100,26 +100,25 @@ Bubble Tea の出力ストリームを `cursorWriter` でラップし、フレ�
 - **課題**:
   GUI のような独立したフロートウィンドウやインラインインプット機構を持たない CUI / `fbterm` 環境では、`uim-fep` がターミナルの文字セルに直接上書きするため、枠線や周辺文字を破壊したり、入力途中の長い文が不自然に入力枠を突き破るなど、小型画面での視認性・操作性に難があることが判明。
 
-### アプローチ B: ステータスラインを上部へ移設し、最下部余白を Preedit 専用とする方式 (採用: v0.1.20)
-ユーザーからの提案に基づき、設計方針を転換：
-1. **モード表示・操作ヘルプのステータスラインを、入力欄（EditorCard）の直下へ移動**。
-2. タイムラインをその下に配置し、画面最下部（`m.height + 1`）を完全な空行（マージン領域）とする。
-3. ハードウェアカーソルをこの**最下部マージン行（`Row m.height + 1`, `Col 1`）に常時待機（Park）**させる。
+### アプローチ B: 最下部余白を Preedit 専用とし、その直上にステータスラインを配置する方式 (採用: v0.1.23)
+ユーザーからの提案に基づき、設計方針を決定：
+1. **モード表示・操作ヘルプのステータスラインを、Preedit 描画行の直上（Row m.height）にフッターとして配置**。
+2. ハードウェアカーソルを `cursorWriter` 経由で**ステータスライン直下のマージン行（`Row m.height + 1`, `Col 1`）に常時待機（Park）**させる。
+3. `uim-fep` のステータスバー（最下行）と合わせ、各要素が1行ずつ整然と並ぶ美しい階層レイアウトを実現。
 
 #### 新レイアウト構成:
 ```text
 ┌────────────────────────────────────────────────────────┐
-│ tsub [v0.1.20]  10 posts                               │ (Header)
+│ tsub [v0.1.23]  10 posts                               │ (Header)
 │                                                        │
 │ ┏━ いまどうしてる？ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓   │ (EditorCard)
 │ ┃                                                ┃   │
 │ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛   │
-│ [入力] Enter: 投稿  Ctrl+O: 改行  Esc: 閲覧  Ctrl+C: 終了│ (StatusBar: ここへ移動！)
 │                                                        │
 │ 20:21 テスト                                           │ (Timeline)
 │ 20:01 続きから読み込み...                              │
 │                                                        │
-│ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ │ (tsub描画境界)
+│ [入力] Enter: 投稿  Ctrl+O: 改行  Esc: 閲覧  Ctrl+C: 終了│ (StatusBar: Preedit の1行上！)
 │ 日本語の入力途中文字がここに綺麗に表示される           │ (uim-fep Preedit 行: Row m.height+1)
 │ anthy-utf8[AnあR]                                      │ (uim-fep Status 行: 最下行)
 └────────────────────────────────────────────────────────┘
@@ -165,8 +164,8 @@ func (w *cursorWriter) Write(p []byte) (int, error) {
 ```go
 // model.go View()
 sections = append(sections, editorRendered)
-sections = append(sections, statusBar) // エディタ直下に配置
 sections = append(sections, timelineRendered)
+sections = append(sections, statusBar) // Preedit 行の直上に配置
 
 // uim-fep (Anthy) の未確定文字列描画用として、最下部余白行 (m.height + 1) にカーソルを退避
 parkRow := m.height + 1
