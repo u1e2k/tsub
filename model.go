@@ -9,7 +9,6 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/mattn/go-runewidth"
 )
 
 // Mode represents the current interaction mode.
@@ -46,9 +45,9 @@ func InitialModel(storage *Storage) (Model, error) {
 	ta := textarea.New()
 	ta.Placeholder = ""
 	ta.Focus()
-	ta.Prompt = "❯ "
-	ta.FocusedStyle.Prompt = editorPromptStyle
-	ta.BlurredStyle.Prompt = editorPromptDimStyle
+	ta.Prompt = " "
+	ta.FocusedStyle.Prompt = lipgloss.NewStyle()
+	ta.BlurredStyle.Prompt = lipgloss.NewStyle()
 	ta.CharLimit = 0
 	ta.ShowLineNumbers = false
 	ta.SetHeight(2)
@@ -168,7 +167,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
-		m.height = msg.Height
+		m.height = msg.Height - 2
+		if m.height < 0 {
+			m.height = 0
+		}
 		m.resizeComponents()
 		m.ready = true
 		return m, nil
@@ -211,11 +213,14 @@ func (m *Model) resizeComponents() {
 	m.textarea.SetWidth(taInnerWidth)
 
 	// Vertical layout:
-	// Header: ~2 lines (padding + content)
-	// Slit Editor: ~5 lines (title 1 line + border & content 4 lines)
-	// Spacers / margins: ~2 lines
-	// Footer: ~2 lines
-	fixedHeight := 2 + 5 + 2 + 2
+	// Header: 1 line
+	// Spacer: 1 line
+	// Slit Editor: 5 lines (title 1 line + border & content 4 lines)
+	// Spacer: 1 line
+	// Spacer: 1 line
+	// Footer: 1 line
+	// Total fixed height: 1 + 1 + 5 + 1 + 1 + 1 = 10 lines
+	fixedHeight := 10
 	vpHeight := m.height - fixedHeight
 	if vpHeight < 3 {
 		vpHeight = 3
@@ -309,31 +314,5 @@ func (m Model) View() string {
 	)
 
 	// Horizontally center the layout across the terminal width
-	fullView := lipgloss.PlaceHorizontal(m.width, lipgloss.Center, content)
-
-	if m.mode == ModeInput {
-		headerHeight := lipgloss.Height(headerBar)
-		editorTitleHeight := lipgloss.Height(editorTitle)
-		// 1-indexed target row:
-		// headerHeight + 1 (empty line) + editorTitleHeight + 1 (editor box top border) + 1 (1-indexed base) + row offset
-		targetY := headerHeight + 1 + editorTitleHeight + 1 + 1 + m.textarea.LineInfo().RowOffset + m.textarea.Line()
-
-		boxWidth := lipgloss.Width(editorBox)
-		leftMargin := 0
-		if m.width > boxWidth {
-			leftMargin = (m.width - boxWidth) / 2
-		}
-		// 1-indexed target col:
-		// 1 (1-indexed base) + leftMargin + 1 (left border) + 1 (left padding) + prompt width + text display width
-		promptWidth := runewidth.StringWidth(m.textarea.Prompt)
-		textWidth := m.textarea.LineInfo().CharOffset
-		targetX := 1 + leftMargin + 1 + 1 + promptWidth + textWidth
-
-		// Move hardware cursor to input position and ensure it is visible
-		cursorSeq := fmt.Sprintf("\x1b[?25h\x1b[%d;%dH", targetY, targetX)
-		return fullView + cursorSeq
-	}
-
-	// Hide hardware cursor in view mode
-	return fullView + "\x1b[?25l"
+	return lipgloss.PlaceHorizontal(m.width, lipgloss.Center, content)
 }

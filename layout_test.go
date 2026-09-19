@@ -3,64 +3,102 @@ package main
 import (
 	"strings"
 	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
-// TestCursorPositionSequence verifies that View() appends the correct hardware
-// cursor position ANSI escape sequence in Input mode and hides the cursor in View mode,
-// resolving uim-fep (Anthy) preedit rendering issues.
-func TestCursorPositionSequence(t *testing.T) {
+// TestUimFepMarginAndLayoutHeight verifies that WindowSizeMsg allocates msg.Height - 2
+// to leave the bottom 2 rows free for uim-fep (Anthy) status and preedit lines.
+func TestUimFepMarginAndLayoutHeight(t *testing.T) {
 	storage := NewStorage()
 	m, err := InitialModel(storage)
 	if err != nil {
 		t.Fatalf("failed to init model: %v", err)
 	}
 
-	m.width = 100
-	m.height = 30
-	m.resizeComponents()
-	m.ready = true
+	terminalHeight := 30
+	terminalWidth := 100
+	updatedModel, _ := m.Update(tea.WindowSizeMsg{Width: terminalWidth, Height: terminalHeight})
+	m = updatedModel.(Model)
 
-	// ModeInput with empty text
-	viewInput := m.View()
-	// Should end with ANSI cursor position sequence: \x1b[?25h\x1b[5;10H
-	expectedSeq := "\x1b[?25h\x1b[5;10H"
-	if !strings.HasSuffix(viewInput, expectedSeq) {
-		t.Errorf("expected view to end with %q, but got suffix %q", expectedSeq, viewInput[len(viewInput)-len(expectedSeq):])
+	expectedHeight := terminalHeight - 2
+	if m.height != expectedHeight {
+		t.Fatalf("expected m.height = %d (msg.Height - 2), got %d", expectedHeight, m.height)
 	}
 
-	// ModeInput with text
-	m.textarea.SetValue("こんにちは")
-	viewInputText := m.View()
-	// "こんにちは" is 10 columns wide, so 10 + 10 = 20
-	expectedSeqText := "\x1b[?25h\x1b[5;20H"
-	if !strings.HasSuffix(viewInputText, expectedSeqText) {
-		t.Errorf("expected view to end with %q, got suffix %q", expectedSeqText, viewInputText[len(viewInputText)-len(expectedSeqText):])
+	view := m.View()
+	renderedHeight := lipgloss.Height(view)
+	if renderedHeight != expectedHeight {
+		t.Errorf("expected rendered view height to be %d, got %d", expectedHeight, renderedHeight)
 	}
 
-	// ModeInput with mixed fullwidth and halfwidth text: "aあbい" -> 1 + 2 + 1 + 2 = 6 cols
-	m.textarea.SetValue("aあbい")
-	viewMixed := m.View()
-	// base col 10 + 6 = 16
-	expectedMixed := "\x1b[?25h\x1b[5;16H"
-	if !strings.HasSuffix(viewMixed, expectedMixed) {
-		t.Errorf("expected view to end with %q, got suffix %q", expectedMixed, viewMixed[len(viewMixed)-len(expectedMixed):])
+	// Verify footer is at the bottom of the rendered view (row H - 2, i.e. 3rd line from bottom)
+	lines := strings.Split(view, "\n")
+	if len(lines) != expectedHeight {
+		t.Errorf("expected %d lines, got %d", expectedHeight, len(lines))
 	}
-
-	// ModeView
-	m.mode = ModeView
-	viewModeView := m.View()
-	expectedSeqView := "\x1b[?25l"
-	if !strings.HasSuffix(viewModeView, expectedSeqView) {
-		t.Errorf("expected view to end with %q, got suffix %q", expectedSeqView, viewModeView[len(viewModeView)-len(expectedSeqView):])
-	}
-
-	// Narrow width test (m.width <= boxWidth)
-	m.mode = ModeInput
-	m.width = 40
-	m.resizeComponents()
-	viewNarrow := m.View()
-	if !strings.Contains(viewNarrow, "\x1b[?25h\x1b[") {
-		t.Errorf("narrow view should contain cursor sequence, got %q", viewNarrow)
+	lastLine := lines[len(lines)-1]
+	if !strings.Contains(lastLine, "Enter:") {
+		t.Errorf("expected footer with 'Enter:' on the last rendered line, got: %q", lastLine)
 	}
 }
 
+// TestNoHardwareCursorEscapeSequences verifies that ANSI cursor position sequences
+// are completely removed from View() in both Input and View modes.
+func TestNoHardwareCursorEscapeSequences(t *testing.T) {
+	storage := NewStorage()
+	m, err := InitialModel(storage)
+	if err != nil {
+		t.Fatalf("failed to init model: %v", err)
+	}
+
+	updatedModel, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = updatedModel.(Model)
+
+	// In Input mode
+	m.mode = ModeInput
+	m.textarea.SetValue("テストメッセージ")
+	viewInput := m.View()
+	if strings.Contains(viewInput, "\x1b[?25h") || strings.Contains(viewInput, "\x1b[?25l") {
+		t.Errorf("view should not contain cursor visibility escape sequences")
+	}
+	if strings.Contains(viewInput, ";") && strings.Contains(viewInput, "H") {
+		// Check for cursor movement sequences like \x1b[...H
+		for _, line := range strings.Split(viewInput, "\n") {
+			if strings.Contains(line, "\x1b[") && strings.HasSuffix(strings.TrimSpace(line), "H") {
+				t.Errorf("view should not contain cursor positioning escape sequences: %q", line)
+			}
+		}
+	}
+
+	// In View mode
+	m.mode = ModeView
+	viewModeView := m.View()
+	if strings.HasSuffix(viewModeView, "\x1b[?25l") {
+		t.Errorf("view mode should not append \\x1b[?25l")
+	}
+}
+
+// TestPlainPrompt verifies that textarea.Prompt is a plain single space with no escape codes.
+func TestPlainPrompt(t *testing.T) {
+	storage := NewStorage()
+	m, err := InitialModel(storage)
+	if err != nil {
+		t.Fatalf("failed to init model: %v", err)
+	}
+
+	if m.textarea.Prompt != " " {
+		t.Errorf("expected prompt to be \" \", got %q", m.textarea.Prompt)
+	}
+
+	// Render prompt style to verify it has no ANSI escape codes
+	renderedFocused := m.textarea.FocusedStyle.Prompt.Render(m.textarea.Prompt)
+	if strings.Contains(renderedFocused, "\x1b") {
+		t.Errorf("focused prompt should not contain ANSI escape codes, got %q", renderedFocused)
+	}
+	renderedBlurred := m.textarea.BlurredStyle.Prompt.Render(m.textarea.Prompt)
+	if strings.Contains(renderedBlurred, "\x1b") {
+		t.Errorf("blurred prompt should not contain ANSI escape codes, got %q", renderedBlurred)
+	}
+}
