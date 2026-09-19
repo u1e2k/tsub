@@ -198,9 +198,17 @@ func (m *Model) resizeComponents() {
 		return
 	}
 
-	boxWidth := m.width
+	// Input card width: ~70% of terminal width (clamped between 40 and m.width)
+	cardWidth := int(float64(m.width) * 0.7)
+	if cardWidth < 40 {
+		cardWidth = 40
+	}
+	if cardWidth > m.width {
+		cardWidth = m.width
+	}
+
 	frameSize := editorActiveBox.GetHorizontalFrameSize()
-	taInnerWidth := boxWidth - frameSize
+	taInnerWidth := cardWidth - frameSize
 	if taInnerWidth < 10 {
 		taInnerWidth = 10
 	}
@@ -220,7 +228,8 @@ func (m *Model) resizeComponents() {
 		vpHeight = 3
 	}
 
-	m.viewport.Width = boxWidth
+	// Timeline viewport spans full terminal width
+	m.viewport.Width = m.width
 	m.viewport.Height = vpHeight
 	m.updateViewportContent()
 }
@@ -249,24 +258,30 @@ func (m Model) View() string {
 		return "起動中..."
 	}
 
-	boxWidth := m.width
-
-	// 1. Header
+	// 1. Header (Full Width)
 	dateStr := m.date.Format("2006-01-02 (Mon)")
 	brand := headerBrand.Render(" tsub ")
 	headerInfo := fmt.Sprintf(" %s | 投稿数: %s ", dateStr, headerCountBadge.Render(fmt.Sprintf("%d", len(m.posts))))
 	headerFrame := headerStyle.GetHorizontalFrameSize()
-	headerInnerWidth := boxWidth - headerFrame
+	headerInnerWidth := m.width - headerFrame
 	if headerInnerWidth < 0 {
 		headerInnerWidth = 0
 	}
 	headerBar := headerStyle.Width(headerInnerWidth).Render(brand + headerInfo)
 
-	// 2. Editor Box (Input Card)
+	// 2. Editor Box (Input Card - ~70% width, centered)
+	cardWidth := int(float64(m.width) * 0.7)
+	if cardWidth < 40 {
+		cardWidth = 40
+	}
+	if cardWidth > m.width {
+		cardWidth = m.width
+	}
+
 	var editorTitle string
 	editorBoxStyle := editorActiveBox
 	if m.mode == ModeInput {
-		if boxWidth >= 50 {
+		if cardWidth >= 50 {
 			editorTitle = editorTitleActive.Render("💭 いまどうしてる？") + " " + editorTitleDim.Render("(Enter: 投稿 / Esc: 閲覧)")
 		} else {
 			editorTitle = editorTitleActive.Render("💭 いまどうしてる？") + " " + editorTitleDim.Render("(Enter: 投稿)")
@@ -277,22 +292,23 @@ func (m Model) View() string {
 	}
 
 	editorFrame := editorBoxStyle.GetHorizontalFrameSize()
-	editorInnerWidth := boxWidth - editorFrame
+	editorInnerWidth := cardWidth - editorFrame
 	if editorInnerWidth < 10 {
 		editorInnerWidth = 10
 	}
 	cardView := editorBoxStyle.Width(editorInnerWidth).Render(m.textarea.View())
 
-	editorRendered := lipgloss.JoinVertical(
+	editorCard := lipgloss.JoinVertical(
 		lipgloss.Left,
 		editorTitle,
 		cardView,
 	)
+	editorRendered := lipgloss.PlaceHorizontal(m.width, lipgloss.Center, editorCard)
 
-	// 3. Timeline Viewport
+	// 3. Timeline Viewport (Full Width)
 	timelineRendered := m.viewport.View()
 
-	// 4. Footer
+	// 4. Footer (Full Width)
 	var modeBadge string
 	var keyHelp string
 	if m.mode == ModeInput {
@@ -312,7 +328,7 @@ func (m Model) View() string {
 		)
 	}
 	footerFrame := footerStyle.GetHorizontalFrameSize()
-	footerInnerWidth := boxWidth - footerFrame
+	footerInnerWidth := m.width - footerFrame
 	if footerInnerWidth < 0 {
 		footerInnerWidth = 0
 	}

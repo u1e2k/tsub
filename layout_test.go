@@ -93,10 +93,9 @@ func TestEmptyPrompt(t *testing.T) {
 	}
 }
 
-// TestFullWidthAndNoOverflow verifies that the layout utilizes the full terminal width (横幅目一杯)
-// and that all components (header, editor box with border/padding, timeline, footer)
-// fit precisely within the window width without right-edge cut-off or overflow.
-func TestFullWidthAndNoOverflow(t *testing.T) {
+// TestFullWidthAndCenteredCard verifies that header, timeline, and footer span the full terminal width (横幅目一杯),
+// while the editor card is sized to ~70% and centered, with no right-edge cut-off or overflow.
+func TestFullWidthAndCenteredCard(t *testing.T) {
 	storage := NewStorage()
 	m, err := InitialModel(storage)
 	if err != nil {
@@ -112,12 +111,14 @@ func TestFullWidthAndNoOverflow(t *testing.T) {
 		t.Errorf("expected width to be %d, got %d", terminalWidth, m.width)
 	}
 
+	// Timeline viewport spans full width
 	if m.viewport.Width != terminalWidth {
-		t.Errorf("expected viewport width to be %d, got %d", terminalWidth, m.viewport.Width)
+		t.Errorf("expected timeline viewport width to be %d, got %d", terminalWidth, m.viewport.Width)
 	}
 
-	// Textarea inner width is terminalWidth - editorActiveBox.GetHorizontalFrameSize() (4)
-	expectedTaWidth := terminalWidth - editorActiveBox.GetHorizontalFrameSize()
+	// Card width is 70% of 100 = 70 cols
+	cardWidth := 70
+	expectedTaWidth := cardWidth - editorActiveBox.GetHorizontalFrameSize() // 70 - 4 = 66
 	if m.textarea.Width() != expectedTaWidth {
 		t.Errorf("expected textarea text width to be %d, got %d", expectedTaWidth, m.textarea.Width())
 	}
@@ -132,7 +133,7 @@ func TestFullWidthAndNoOverflow(t *testing.T) {
 		}
 	}
 
-	// Verify full width lines exist (header, card border, footer all reach terminalWidth)
+	// Verify full width lines exist (header and footer reach terminalWidth)
 	fullWidthCount := 0
 	for _, line := range lines {
 		if lipgloss.Width(line) == terminalWidth {
@@ -143,11 +144,23 @@ func TestFullWidthAndNoOverflow(t *testing.T) {
 		t.Errorf("expected layout to contain lines of full terminal width %d", terminalWidth)
 	}
 
+	// Verify centered card: lines containing the editor card border have leading margins (15 spaces)
+	hasCenteredCard := false
+	for _, line := range lines {
+		if strings.HasPrefix(line, "               ╭") || strings.HasPrefix(line, "               │") {
+			hasCenteredCard = true
+			break
+		}
+	}
+	if !hasCenteredCard {
+		t.Errorf("expected editor card to be centered with 15 leading spaces on 100-col terminal")
+	}
+
 	// Case 2: Standard terminal (80 cols)
 	updatedModel80, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
 	m80 := updatedModel80.(Model)
 	if m80.width != 80 || m80.viewport.Width != 80 {
-		t.Errorf("expected 80 cols full width, got m.width=%d, m.viewport.Width=%d", m80.width, m80.viewport.Width)
+		t.Errorf("expected 80 cols full width for timeline, got m.width=%d, m.viewport.Width=%d", m80.width, m80.viewport.Width)
 	}
 	view80 := m80.View()
 	for i, line := range strings.Split(view80, "\n") {
