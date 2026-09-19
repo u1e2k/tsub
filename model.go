@@ -317,7 +317,7 @@ func (m Model) View() string {
 	var modeBadge string
 	var keyHelp string
 	if m.mode == ModeInput {
-		modeBadge = footerModeBadgeInput.Render("入力") + " " + headerImeBadge.Render("Anあ")
+		modeBadge = footerModeBadgeInput.Render("入力")
 		keyHelp = fmt.Sprintf(" %s %s  %s %s  %s %s",
 			footerKeyStyle.Render("Enter:"), "投稿",
 			footerKeyStyle.Render("Esc:"), "閲覧",

@@ -105,12 +105,6 @@ var (
 				Background(lipgloss.Color("#6366F1")). // Indigo
 				Padding(0, 1)
 
-	headerImeBadge = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(colorWhite).
-			Background(lipgloss.Color("#059669")). // Emerald-600
-			Padding(0, 1)
-
 	footerKeyStyle = lipgloss.NewStyle().
 			Foreground(colorSky).
 			Bold(true)
