@@ -147,7 +147,7 @@ func TestFullWidthAndCenteredCard(t *testing.T) {
 	// Verify centered card: lines containing the editor card border have leading margins (15 spaces)
 	hasCenteredCard := false
 	for _, line := range lines {
-		if strings.HasPrefix(line, "               ╭") || strings.HasPrefix(line, "               │") || strings.HasPrefix(line, "               ┃") {
+		if strings.HasPrefix(line, "               ╭") || strings.HasPrefix(line, "               │") || strings.HasPrefix(line, "               ┃") || strings.HasPrefix(line, "               ┎") {
 			hasCenteredCard = true
 			break
 		}

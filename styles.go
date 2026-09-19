@@ -37,16 +37,17 @@ var (
 				Foreground(colorSky).
 				Bold(true)
 
-	// Custom border with thick vertical lines for high visibility on framebuffer/console
+	// Custom border with thick vertical lines and matching down-heavy corners
+	// to seamlessly join light horizontal lines (─) with heavy vertical lines (┃).
 	verticalThickBorder = lipgloss.Border{
 		Top:         "─",
 		Bottom:      "─",
 		Left:        "┃",
 		Right:       "┃",
-		TopLeft:     "╭",
-		TopRight:    "╮",
-		BottomLeft:  "╰",
-		BottomRight: "╯",
+		TopLeft:     "┎",
+		TopRight:    "┒",
+		BottomLeft:  "┖",
+		BottomRight: "┚",
 	}
 
 	// Editor styles
