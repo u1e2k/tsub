@@ -273,7 +273,7 @@ func (m *Model) resizeComponents() {
 		spacers++
 	}
 
-	fixedLines := 1 /* header */ + 1 /* editorTitle */ + cardLines + 1 /* footer */ + spacers
+	fixedLines := 1 /* header */ + cardLines + spacers
 	vpHeight := m.height - fixedLines
 	if vpHeight < 1 {
 		vpHeight = 1
@@ -309,16 +309,51 @@ func (m Model) View() string {
 		return "起動中..."
 	}
 
-	// 1. Header (Full Width)
+	// 1. Header (Full Width) with Mode & Key Help integrated
 	dateStr := m.date.Format("2006-01-02 (Mon)")
 	brand := headerBrand.Render(" tsub ")
-	headerInfo := fmt.Sprintf(" %s | 投稿数: %s ", dateStr, headerCountBadge.Render(fmt.Sprintf("%d", len(m.posts))))
+	headerInfo := fmt.Sprintf(" %s | %s件 ", dateStr, headerCountBadge.Render(fmt.Sprintf("%d", len(m.posts))))
+
+	var modeBadge string
+	var keyHelp string
+	if m.mode == ModeInput {
+		modeBadge = footerModeBadgeInput.Render("入力")
+		keyHelp = fmt.Sprintf(" %s %s  %s %s  %s %s",
+			footerKeyStyle.Render("Enter:"), "投稿",
+			footerKeyStyle.Render("Esc:"), "閲覧",
+			footerKeyStyle.Render("Ctrl+C:"), "終了",
+		)
+	} else {
+		modeBadge = footerModeBadgeView.Render("閲覧")
+		keyHelp = fmt.Sprintf(" %s %s  %s %s  %s %s",
+			footerKeyStyle.Render("j/k:"), "移動",
+			footerKeyStyle.Render("i/Esc:"), "入力",
+			footerKeyStyle.Render("Ctrl+C:"), "終了",
+		)
+	}
+
 	headerFrame := headerStyle.GetHorizontalFrameSize()
 	headerInnerWidth := m.width - headerFrame
 	if headerInnerWidth < 0 {
 		headerInnerWidth = 0
 	}
-	headerBar := headerStyle.Width(headerInnerWidth).Render(brand + headerInfo)
+
+	leftContent := brand + headerInfo
+	rightContent := modeBadge + " " + keyHelp
+	leftWidth := lipgloss.Width(leftContent)
+	rightWidth := lipgloss.Width(rightContent)
+
+	var headerContent string
+	if leftWidth+rightWidth+1 <= headerInnerWidth {
+		gap := headerInnerWidth - leftWidth - rightWidth
+		headerContent = leftContent + strings.Repeat(" ", gap) + rightContent
+	} else if leftWidth+lipgloss.Width(modeBadge)+1 <= headerInnerWidth {
+		gap := headerInnerWidth - leftWidth - lipgloss.Width(modeBadge)
+		headerContent = leftContent + strings.Repeat(" ", gap) + modeBadge
+	} else {
+		headerContent = leftContent
+	}
+	headerBar := headerStyle.Width(m.width).Render(headerContent)
 
 	// 2. Editor Box (Input Card - ~70% width, centered)
 	cardWidth := int(float64(m.width) * 0.7)
@@ -329,17 +364,9 @@ func (m Model) View() string {
 		cardWidth = m.width
 	}
 
-	var editorTitle string
 	editorBoxStyle := editorActiveBox
-	if m.mode == ModeInput {
-		if cardWidth >= 50 {
-			editorTitle = editorTitleActive.Render("💭 いまどうしてる？") + " " + editorTitleDim.Render("(Enter: 投稿 / Esc: 閲覧)")
-		} else {
-			editorTitle = editorTitleActive.Render("💭 いまどうしてる？") + " " + editorTitleDim.Render("(Enter: 投稿)")
-		}
-	} else {
+	if m.mode != ModeInput {
 		editorBoxStyle = editorInactiveBox
-		editorTitle = editorTitleDim.Render("💭 いまどうしてる？ (i: 投稿入力)")
 	}
 
 	editorFrame := editorBoxStyle.GetHorizontalFrameSize()
@@ -348,46 +375,12 @@ func (m Model) View() string {
 		editorInnerWidth = 10
 	}
 	cardView := editorBoxStyle.Width(editorInnerWidth).Render(m.textarea.View())
-
-	editorCard := lipgloss.JoinVertical(
-		lipgloss.Left,
-		editorTitle,
-		cardView,
-	)
-	editorRendered := lipgloss.PlaceHorizontal(m.width, lipgloss.Center, editorCard)
+	editorRendered := lipgloss.PlaceHorizontal(m.width, lipgloss.Center, cardView)
 
 	// 3. Timeline Viewport (Full Width)
 	timelineRendered := m.viewport.View()
 
-	// 4. Footer (Full Width)
-	var modeBadge string
-	var keyHelp string
-	if m.mode == ModeInput {
-		modeBadge = footerModeBadgeInput.Render("入力")
-		keyHelp = fmt.Sprintf(" %s %s  %s %s  %s %s",
-			footerKeyStyle.Render("Enter:"), "投稿",
-			footerKeyStyle.Render("Esc:"), "閲覧モード",
-			footerKeyStyle.Render("Ctrl+C/Q:"), "終了",
-		)
-	} else {
-		modeBadge = footerModeBadgeView.Render("閲覧")
-		keyHelp = fmt.Sprintf(" %s %s  %s %s  %s %s  %s %s",
-			footerKeyStyle.Render("j/k:"), "スクロール",
-			footerKeyStyle.Render("i:"), "入力へ戻る",
-			footerKeyStyle.Render("Esc:"), "入力へ戻る",
-			footerKeyStyle.Render("Ctrl+C/Q:"), "終了",
-		)
-	}
-	statusFrame := footerStyle.GetHorizontalFrameSize()
-	statusInnerWidth := m.width - statusFrame
-	if statusInnerWidth < 0 {
-		statusInnerWidth = 0
-	}
-	statusBar := footerStyle.Width(statusInnerWidth).Render(modeBadge + " " + keyHelp)
-
 	// Compose layout vertically with adaptive spacers based on height.
-	// Place mode status bar (footer) directly above the bottom margin (Row m.height),
-	// with the hardware cursor parked on Row m.height + 1 for uim-fep preedit.
 	var sections []string
 	sections = append(sections, headerBar)
 	if m.height >= 16 {
@@ -401,13 +394,12 @@ func (m Model) View() string {
 	if m.height >= 15 {
 		sections = append(sections, "")
 	}
-	sections = append(sections, statusBar)
 
 	fullView := lipgloss.JoinVertical(lipgloss.Left, sections...)
 
 	// Park hardware cursor on the dedicated preedit line in the bottom margin (Row m.height + 1).
 	// This lets uim-fep (Anthy) display the in-progress preedit text cleanly at the bottom,
-	// completely avoiding collisions with the editor box and the mode status bar!
+	// completely avoiding collisions with any UI element!
 	parkRow := m.height + 1
 	if m.mode == ModeInput {
 		SetCursorPosition(parkRow, 1, true)

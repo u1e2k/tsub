@@ -56,20 +56,18 @@ func TestUimFepMarginAndLayoutHeight(t *testing.T) {
 	if m.height != expectedHeight {
 		t.Fatalf("expected m.height = %d (msg.Height - 3), got %d", expectedHeight, m.height)
 	}
-
 	view := m.View()
 	renderedHeight := lipgloss.Height(view)
+	lines := strings.Split(view, "\n")
 	if renderedHeight != expectedHeight {
 		t.Errorf("expected rendered view height to be %d, got %d", expectedHeight, renderedHeight)
 	}
-
-	lines := strings.Split(view, "\n")
 	if len(lines) != expectedHeight {
 		t.Errorf("expected %d lines, got %d", expectedHeight, len(lines))
 	}
-	lastLine := lines[len(lines)-1]
-	if !strings.Contains(lastLine, "Enter:") {
-		t.Errorf("expected footer with 'Enter:' on the last rendered line, got: %q", lastLine)
+	firstLine := lines[0]
+	if !strings.Contains(firstLine, "Enter:") {
+		t.Errorf("expected header with 'Enter:' on the first line, got: %q", firstLine)
 	}
 
 	// Case 2: Compact screen (13 rows, e.g. Raspberry Pi handheld LCD)
