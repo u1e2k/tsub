@@ -115,15 +115,24 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ needs.version.outputs.tag_name }}
         run: |
-          if [ "${{ github.ref_type }}" = "tag" ]; then
-            gh release create "$TAG_NAME" dist/* \
+          if gh release view "$TAG_NAME" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release $TAG_NAME already exists, uploading assets..."
+            gh release upload "$TAG_NAME" dist/* \
               --repo "${{ github.repository }}" \
-              --title "$TAG_NAME" \
-              --generate-notes
+              --clobber
           else
-            gh release create "$TAG_NAME" dist/* \
-              --repo "${{ github.repository }}" \
-              --target "${{ github.sha }}" \
-              --title "$TAG_NAME" \
-              --generate-notes
+            if [ "${{ github.ref_type }}" = "tag" ]; then
+              gh release create "$TAG_NAME" dist/* \
+                --repo "${{ github.repository }}" \
+                --title "$TAG_NAME" \
+                --generate-notes \
+                --clobber
+            else
+              gh release create "$TAG_NAME" dist/* \
+                --repo "${{ github.repository }}" \
+                --target "${{ github.sha }}" \
+                --title "$TAG_NAME" \
+                --generate-notes \
+                --clobber
+            fi
           fi
