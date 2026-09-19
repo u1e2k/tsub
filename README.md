@@ -25,24 +25,42 @@
 
 ## Installation
 
-### Prerequisites
+### 🚀 Quick Install (Raspberry Pi & Linux)
+
+Install or update `tsub` to `/usr/local/bin` using the automated install script:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/u1e2k/tsub/main/install.sh | bash
+```
+
+The script automatically detects your architecture (`arm64` / `armv7l` / `x86_64`) and downloads the latest release binary.
+
+### 📦 Pre-built Binaries
+
+Pre-compiled standalone binaries for Linux are available on the [Releases](https://github.com/u1e2k/tsub/releases) page:
+- **Raspberry Pi OS 64-bit**: `tsub-linux-arm64`
+- **Raspberry Pi OS 32-bit**: `tsub-linux-armv7`
+- **x86_64 Linux PC/Server**: `tsub-linux-amd64`
+
+### 🛠️ Building from Source
+
+#### Prerequisites
 - Go 1.22+
 
-### Building from Source
 1. Clone the repository:
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/u1e2k/tsub.git
    cd tsub
    ```
 
 2. Build the binary:
    ```bash
-   go build -o tsub .
+   go build -ldflags="-s -w" -o tsub .
    ```
 
-3. Make it executable:
+3. (Optional) Install to PATH:
    ```bash
-   chmod +x tsub
+   sudo install -m 755 tsub /usr/local/bin/
    ```
 
 ## Usage
