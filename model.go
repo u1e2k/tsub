@@ -168,7 +168,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
+		m.width = msg.Width - 2
+		if m.width < 0 {
+			m.width = 0
+		}
 		m.height = msg.Height - 2
 		if m.height < 0 {
 			m.height = 0
@@ -195,13 +198,13 @@ func (m *Model) resizeComponents() {
 		return
 	}
 
-	// Card width: ~70% of screen width (min 40 chars)
+	// Card width: ~70% of safe width (min 40 chars)
 	boxWidth := int(float64(m.width) * 0.7)
 	if boxWidth < 40 {
 		boxWidth = 40
 	}
-	if boxWidth > m.width-2 && m.width > 2 {
-		boxWidth = m.width - 2
+	if boxWidth > m.width && m.width > 0 {
+		boxWidth = m.width
 	}
 
 	// Textarea inner width (accounting for border and padding = 4 chars)
@@ -267,7 +270,8 @@ func (m Model) View() string {
 		editorBoxStyle = editorInactiveBox
 		editorTitle = editorTitleDim.Render("💭 いまどうしてる？ (i: 投稿入力)")
 	}
-	cardView := editorBoxStyle.Width(m.viewport.Width).Render(m.textarea.View())
+	// Subtract 2 for left and right border so outer width exactly matches m.viewport.Width
+	cardView := editorBoxStyle.Width(m.viewport.Width - 2).Render(m.textarea.View())
 	cardWidth := lipgloss.Width(cardView)
 
 	editorRendered := lipgloss.JoinVertical(
