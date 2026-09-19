@@ -80,81 +80,80 @@ func TestNoHardwareCursorEscapeSequences(t *testing.T) {
 	}
 }
 
-// TestPlainPrompt verifies that textarea.Prompt is a plain prompt with no escape codes.
-func TestPlainPrompt(t *testing.T) {
+// TestEmptyPrompt verifies that textarea.Prompt is empty (no unwanted "> " or extra prompt characters).
+func TestEmptyPrompt(t *testing.T) {
 	storage := NewStorage()
 	m, err := InitialModel(storage)
 	if err != nil {
 		t.Fatalf("failed to init model: %v", err)
 	}
 
-	if m.textarea.Prompt != "> " {
-		t.Errorf("expected prompt to be \"> \", got %q", m.textarea.Prompt)
-	}
-
-	// Render prompt style to verify it has no ANSI escape codes
-	renderedFocused := m.textarea.FocusedStyle.Prompt.Render(m.textarea.Prompt)
-	if strings.Contains(renderedFocused, "\x1b") {
-		t.Errorf("focused prompt should not contain ANSI escape codes, got %q", renderedFocused)
-	}
-	renderedBlurred := m.textarea.BlurredStyle.Prompt.Render(m.textarea.Prompt)
-	if strings.Contains(renderedBlurred, "\x1b") {
-		t.Errorf("blurred prompt should not contain ANSI escape codes, got %q", renderedBlurred)
+	if m.textarea.Prompt != "" {
+		t.Errorf("expected prompt to be \"\", got %q", m.textarea.Prompt)
 	}
 }
 
-// TestCardWidthAndCentering verifies that the editor card and timeline are sized
-// to ~70% of safe width (msg.Width - 2, min 40 chars) and centered horizontally with margins.
-func TestCardWidthAndCentering(t *testing.T) {
+// TestFullWidthAndNoOverflow verifies that the layout utilizes the full terminal width (横幅目一杯)
+// and that all components (header, editor box with border/padding, timeline, footer)
+// fit precisely within the window width without right-edge cut-off or overflow.
+func TestFullWidthAndNoOverflow(t *testing.T) {
 	storage := NewStorage()
 	m, err := InitialModel(storage)
 	if err != nil {
 		t.Fatalf("failed to init model: %v", err)
 	}
 
-	// Case 1: 100 cols -> safe width = 98 -> 70% of 98 = 68
-	updatedModel, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	// Case 1: 100 cols
+	terminalWidth := 100
+	updatedModel, _ := m.Update(tea.WindowSizeMsg{Width: terminalWidth, Height: 30})
 	m = updatedModel.(Model)
 
-	if m.width != 98 {
-		t.Errorf("expected safe width to be 98 for 100-col screen, got %d", m.width)
+	if m.width != terminalWidth {
+		t.Errorf("expected width to be %d, got %d", terminalWidth, m.width)
 	}
 
-	if m.viewport.Width != 68 {
-		t.Errorf("expected box width to be 68 for 100-col screen, got %d", m.viewport.Width)
+	if m.viewport.Width != terminalWidth {
+		t.Errorf("expected viewport width to be %d, got %d", terminalWidth, m.viewport.Width)
 	}
 
-	// Textarea inner text width is (boxWidth - 4) - promptWidth(2) = 62
-	if m.textarea.Width() != 62 {
-		t.Errorf("expected textarea text width to be 62, got %d", m.textarea.Width())
+	// Textarea inner width is terminalWidth - editorActiveBox.GetHorizontalFrameSize() (4)
+	expectedTaWidth := terminalWidth - editorActiveBox.GetHorizontalFrameSize()
+	if m.textarea.Width() != expectedTaWidth {
+		t.Errorf("expected textarea text width to be %d, got %d", expectedTaWidth, m.textarea.Width())
 	}
 
-	// Verify horizontal centering (lines should have leading spaces)
+	// Verify no line in the rendered view exceeds terminalWidth
 	view := m.View()
 	lines := strings.Split(view, "\n")
-	// Expected card outer width is exactly 68, margin on each side: (98 - 68) / 2 = 15 spaces
-	hasMargin := false
-	for _, line := range lines {
-		if strings.HasPrefix(line, "               ") {
-			hasMargin = true
-			break
+	for i, line := range lines {
+		w := lipgloss.Width(line)
+		if w > terminalWidth {
+			t.Errorf("line %d has width %d, exceeding terminal width %d: %q", i, w, terminalWidth, line)
 		}
 	}
-	if !hasMargin {
-		t.Errorf("expected centered view to have leading margins on 100-col screen")
+
+	// Verify full width lines exist (header, card border, footer all reach terminalWidth)
+	fullWidthCount := 0
+	for _, line := range lines {
+		if lipgloss.Width(line) == terminalWidth {
+			fullWidthCount++
+		}
+	}
+	if fullWidthCount == 0 {
+		t.Errorf("expected layout to contain lines of full terminal width %d", terminalWidth)
 	}
 
-	// Case 2: Standard terminal (80 cols) -> safe width = 78 -> 70% of 78 = 54 cols
+	// Case 2: Standard terminal (80 cols)
 	updatedModel80, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
 	m80 := updatedModel80.(Model)
-	if m80.viewport.Width != 54 {
-		t.Errorf("expected box width for 80-col screen to be 54, got %d", m80.viewport.Width)
+	if m80.width != 80 || m80.viewport.Width != 80 {
+		t.Errorf("expected 80 cols full width, got m.width=%d, m.viewport.Width=%d", m80.width, m80.viewport.Width)
 	}
-
-	// Case 3: Narrow terminal (50 cols) -> safe width = 48 -> 70% = 33, clamped to min 40
-	updatedModel50, _ := m.Update(tea.WindowSizeMsg{Width: 50, Height: 30})
-	m50 := updatedModel50.(Model)
-	if m50.viewport.Width != 40 {
-		t.Errorf("expected box width for 50-col screen to be min 40, got %d", m50.viewport.Width)
+	view80 := m80.View()
+	for i, line := range strings.Split(view80, "\n") {
+		w := lipgloss.Width(line)
+		if w > 80 {
+			t.Errorf("80-col mode: line %d has width %d, exceeding 80: %q", i, w, line)
+		}
 	}
 }

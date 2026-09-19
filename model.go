@@ -45,7 +45,7 @@ func InitialModel(storage *Storage) (Model, error) {
 	ta := textarea.New()
 	ta.Placeholder = ""
 	ta.Focus()
-	ta.Prompt = "> "
+	ta.Prompt = ""
 	ta.FocusedStyle.Prompt = lipgloss.NewStyle()
 	ta.BlurredStyle.Prompt = lipgloss.NewStyle()
 	ta.FocusedStyle.CursorLine = lipgloss.NewStyle()
@@ -168,7 +168,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.WindowSizeMsg:
-		m.width = msg.Width - 2
+		m.width = msg.Width
 		if m.width < 0 {
 			m.width = 0
 		}
@@ -198,17 +198,9 @@ func (m *Model) resizeComponents() {
 		return
 	}
 
-	// Card width: ~70% of safe width (min 40 chars)
-	boxWidth := int(float64(m.width) * 0.7)
-	if boxWidth < 40 {
-		boxWidth = 40
-	}
-	if boxWidth > m.width && m.width > 0 {
-		boxWidth = m.width
-	}
-
-	// Textarea inner width (accounting for border and padding = 4 chars)
-	taInnerWidth := boxWidth - 4
+	boxWidth := m.width
+	frameSize := editorActiveBox.GetHorizontalFrameSize()
+	taInnerWidth := boxWidth - frameSize
 	if taInnerWidth < 10 {
 		taInnerWidth = 10
 	}
@@ -257,11 +249,24 @@ func (m Model) View() string {
 		return "起動中..."
 	}
 
+	boxWidth := m.width
+
+	// 1. Header
+	dateStr := m.date.Format("2006-01-02 (Mon)")
+	brand := headerBrand.Render(" tsub ")
+	headerInfo := fmt.Sprintf(" %s | 投稿数: %s ", dateStr, headerCountBadge.Render(fmt.Sprintf("%d", len(m.posts))))
+	headerFrame := headerStyle.GetHorizontalFrameSize()
+	headerInnerWidth := boxWidth - headerFrame
+	if headerInnerWidth < 0 {
+		headerInnerWidth = 0
+	}
+	headerBar := headerStyle.Width(headerInnerWidth).Render(brand + headerInfo)
+
 	// 2. Editor Box (Input Card)
 	var editorTitle string
 	editorBoxStyle := editorActiveBox
 	if m.mode == ModeInput {
-		if m.viewport.Width >= 50 {
+		if boxWidth >= 50 {
 			editorTitle = editorTitleActive.Render("💭 いまどうしてる？") + " " + editorTitleDim.Render("(Enter: 投稿 / Esc: 閲覧)")
 		} else {
 			editorTitle = editorTitleActive.Render("💭 いまどうしてる？") + " " + editorTitleDim.Render("(Enter: 投稿)")
@@ -270,21 +275,19 @@ func (m Model) View() string {
 		editorBoxStyle = editorInactiveBox
 		editorTitle = editorTitleDim.Render("💭 いまどうしてる？ (i: 投稿入力)")
 	}
-	// Subtract 2 for left and right border so outer width exactly matches m.viewport.Width
-	cardView := editorBoxStyle.Width(m.viewport.Width - 2).Render(m.textarea.View())
-	cardWidth := lipgloss.Width(cardView)
+
+	editorFrame := editorBoxStyle.GetHorizontalFrameSize()
+	editorInnerWidth := boxWidth - editorFrame
+	if editorInnerWidth < 10 {
+		editorInnerWidth = 10
+	}
+	cardView := editorBoxStyle.Width(editorInnerWidth).Render(m.textarea.View())
 
 	editorRendered := lipgloss.JoinVertical(
 		lipgloss.Left,
 		editorTitle,
 		cardView,
 	)
-
-	// 1. Header
-	dateStr := m.date.Format("2006-01-02 (Mon)")
-	brand := headerBrand.Render(" tsub ")
-	headerInfo := fmt.Sprintf(" %s | 投稿数: %s ", dateStr, headerCountBadge.Render(fmt.Sprintf("%d", len(m.posts))))
-	headerBar := headerStyle.Width(cardWidth).Render(brand + headerInfo)
 
 	// 3. Timeline Viewport
 	timelineRendered := m.viewport.View()
@@ -308,10 +311,15 @@ func (m Model) View() string {
 			footerKeyStyle.Render("Ctrl+C/Q:"), "終了",
 		)
 	}
-	footerBar := footerStyle.Width(cardWidth).Render(modeBadge + " " + keyHelp)
+	footerFrame := footerStyle.GetHorizontalFrameSize()
+	footerInnerWidth := boxWidth - footerFrame
+	if footerInnerWidth < 0 {
+		footerInnerWidth = 0
+	}
+	footerBar := footerStyle.Width(footerInnerWidth).Render(modeBadge + " " + keyHelp)
 
 	// Compose layout vertically
-	content := lipgloss.JoinVertical(
+	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		headerBar,
 		"",
@@ -321,7 +329,4 @@ func (m Model) View() string {
 		"",
 		footerBar,
 	)
-
-	// Horizontally center the layout across the terminal width
-	return lipgloss.PlaceHorizontal(m.width, lipgloss.Center, content)
 }
