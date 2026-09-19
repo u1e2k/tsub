@@ -269,9 +269,6 @@ func (m *Model) resizeComponents() {
 	if m.height >= 13 {
 		spacers++
 	}
-	if m.height >= 15 {
-		spacers++
-	}
 
 	fixedLines := 1 /* header */ + cardLines + spacers
 	vpHeight := m.height - fixedLines
@@ -297,7 +294,7 @@ func (m *Model) updateViewportContent() {
 		line := RenderPostLine(post, m.viewport.Width)
 		sb.WriteString(line)
 		if i < len(m.posts)-1 {
-			sb.WriteString("\n\n") // Separator between posts
+			sb.WriteString("\n") // Compact 1-line spacing between posts
 		}
 	}
 	m.viewport.SetContent(sb.String())
@@ -392,9 +389,6 @@ func (m Model) View() string {
 		sections = append(sections, "")
 	}
 	sections = append(sections, timelineRendered)
-	if m.height >= 15 {
-		sections = append(sections, "")
-	}
 
 	fullView := lipgloss.JoinVertical(lipgloss.Left, sections...)
 
