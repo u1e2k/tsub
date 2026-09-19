@@ -71,8 +71,13 @@ if [ ! -w "${INSTALL_DIR}" ]; then
 fi
 
 ${SUDO} mkdir -p "${INSTALL_DIR}"
-${SUDO} cp "${TMP_FILE}" "${INSTALL_DIR}/${BINARY_NAME}"
-${SUDO} chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
+
+# Use atomic copy and mv to avoid "Text file busy" (ETXTBSY) error
+# when self-updating (tsub -u) while the binary is actively running.
+TMP_INSTALL="${INSTALL_DIR}/${BINARY_NAME}.tmp.$$"
+${SUDO} cp "${TMP_FILE}" "${TMP_INSTALL}"
+${SUDO} chmod +x "${TMP_INSTALL}"
+${SUDO} mv -f "${TMP_INSTALL}" "${INSTALL_DIR}/${BINARY_NAME}"
 
 echo ""
 echo "========================================================"
