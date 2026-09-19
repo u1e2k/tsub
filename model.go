@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 )
 
 // Mode represents the current interaction mode.
@@ -373,5 +374,36 @@ func (m Model) View() string {
 	}
 	sections = append(sections, footerBar)
 
-	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+	fullView := lipgloss.JoinVertical(lipgloss.Left, sections...)
+
+	if m.mode == ModeInput {
+		headerHeight := lipgloss.Height(headerBar)
+		spacer1 := 0
+		if m.height >= 16 {
+			spacer1 = 1
+		}
+		editorTitleHeight := lipgloss.Height(editorTitle)
+		// 1-indexed target row:
+		// 1 (1-indexed base) + headerHeight + spacer1 + editorTitleHeight + 1 (editor box top border) + visible row offset in textarea
+		targetY := 1 + headerHeight + spacer1 + editorTitleHeight + 1 + m.textarea.LineInfo().RowOffset
+
+		leftMargin := 0
+		if m.width > cardWidth {
+			leftMargin = (m.width - cardWidth) / 2
+		}
+		// 1-indexed target col:
+		// 1 (1-indexed base) + leftMargin + 1 (left border) + 1 (left padding) + prompt width + text display width
+		promptWidth := runewidth.StringWidth(m.textarea.Prompt)
+		textWidth := m.textarea.LineInfo().CharOffset
+		targetX := 1 + leftMargin + 1 + 1 + promptWidth + textWidth
+
+		// Move hardware cursor to input position and ensure it is visible.
+		// This enables uim-fep (Anthy) to render the preedit string directly inside the input box!
+		return fullView + fmt.Sprintf("\x1b[?25h\x1b[%d;%dH", targetY, targetX)
+	}
+
+	// In View mode, hide hardware cursor and park it on the safe margin row below the footer
+	// so accidental keystrokes with IME turned on do not overwrite the footer bar.
+	parkRow := m.height + 1
+	return fullView + fmt.Sprintf("\x1b[?25l\x1b[%d;1H", parkRow)
 }

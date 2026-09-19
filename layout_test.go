@@ -60,9 +60,10 @@ func TestUimFepMarginAndLayoutHeight(t *testing.T) {
 	}
 }
 
-// TestNoHardwareCursorEscapeSequences verifies that ANSI cursor position sequences
-// are completely removed from View() in both Input and View modes.
-func TestNoHardwareCursorEscapeSequences(t *testing.T) {
+// TestHardwareCursorPositioning verifies that ANSI cursor position sequences
+// are emitted in View() to position the hardware cursor inside the textarea in ModeInput,
+// and park/hide the cursor in ModeView to prevent uim-fep from overwriting the footer.
+func TestHardwareCursorPositioning(t *testing.T) {
 	storage := NewStorage()
 	m, err := InitialModel(storage)
 	if err != nil {
@@ -72,27 +73,31 @@ func TestNoHardwareCursorEscapeSequences(t *testing.T) {
 	updatedModel, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	m = updatedModel.(Model)
 
-	// In Input mode
+	// In Input mode: cursor should be visible and positioned inside textarea
 	m.mode = ModeInput
-	m.textarea.SetValue("テストメッセージ")
-	viewInput := m.View()
-	if strings.Contains(viewInput, "\x1b[?25h") || strings.Contains(viewInput, "\x1b[?25l") {
-		t.Errorf("view should not contain cursor visibility escape sequences")
-	}
-	if strings.Contains(viewInput, ";") && strings.Contains(viewInput, "H") {
-		// Check for cursor movement sequences like \x1b[...H
-		for _, line := range strings.Split(viewInput, "\n") {
-			if strings.Contains(line, "\x1b[") && strings.HasSuffix(strings.TrimSpace(line), "H") {
-				t.Errorf("view should not contain cursor positioning escape sequences: %q", line)
-			}
-		}
+	viewInputEmpty := m.View()
+	// Target row: 1 + header(1) + spacer1(1) + title(1) + borderTop(1) + rowOffset(0) = 5
+	// Target col: 1 + leftMargin(15) + border(1) + padding(1) + prompt(0) + charOffset(0) = 18
+	expectedEmptySeq := "\x1b[?25h\x1b[5;18H"
+	if !strings.HasSuffix(viewInputEmpty, expectedEmptySeq) {
+		t.Errorf("expected view to end with %q, got suffix %q", expectedEmptySeq, viewInputEmpty[len(viewInputEmpty)-len(expectedEmptySeq):])
 	}
 
-	// In View mode
+	// In Input mode with text: "こんにちは" (10 columns wide) -> col = 18 + 10 = 28
+	m.textarea.SetValue("こんにちは")
+	viewInputText := m.View()
+	expectedTextSeq := "\x1b[?25h\x1b[5;28H"
+	if !strings.HasSuffix(viewInputText, expectedTextSeq) {
+		t.Errorf("expected view to end with %q, got suffix %q", expectedTextSeq, viewInputText[len(viewInputText)-len(expectedTextSeq):])
+	}
+
+	// In View mode: cursor hidden and parked on margin line below footer
 	m.mode = ModeView
 	viewModeView := m.View()
-	if strings.HasSuffix(viewModeView, "\x1b[?25l") {
-		t.Errorf("view mode should not append \\x1b[?25l")
+	// m.height is 27 (30 - 3), so parkRow is 28
+	expectedParkSeq := "\x1b[?25l\x1b[28;1H"
+	if !strings.HasSuffix(viewModeView, expectedParkSeq) {
+		t.Errorf("expected view mode to end with %q, got suffix %q", expectedParkSeq, viewModeView[len(viewModeView)-len(expectedParkSeq):])
 	}
 }
 
@@ -163,7 +168,7 @@ func TestFullWidthAndCenteredCard(t *testing.T) {
 	// Verify centered card: lines containing the editor card border have leading margins (15 spaces)
 	hasCenteredCard := false
 	for _, line := range lines {
-		if strings.HasPrefix(line, "               ╭") || strings.HasPrefix(line, "               │") || strings.HasPrefix(line, "               ┃") || strings.HasPrefix(line, "               ┎") {
+		if strings.HasPrefix(line, "               ") && (strings.Contains(line, "┎") || strings.Contains(line, "┃")) {
 			hasCenteredCard = true
 			break
 		}
