@@ -37,14 +37,26 @@ var (
 				Foreground(colorSky).
 				Bold(true)
 
+	// Custom border with thick vertical lines for high visibility on framebuffer/console
+	verticalThickBorder = lipgloss.Border{
+		Top:         "─",
+		Bottom:      "─",
+		Left:        "┃",
+		Right:       "┃",
+		TopLeft:     "╭",
+		TopRight:    "╮",
+		BottomLeft:  "╰",
+		BottomRight: "╯",
+	}
+
 	// Editor styles
 	editorActiveBox = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("4")). // ANSI color 4 (Blue)
+			Border(verticalThickBorder).
+			BorderForeground(colorSky).
 			Padding(0, 1)
 
 	editorInactiveBox = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
+				Border(verticalThickBorder).
 				BorderForeground(colorBorderDim).
 				Padding(0, 1)
 
