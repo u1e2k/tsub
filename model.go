@@ -12,7 +12,6 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/mattn/go-runewidth"
 )
 
 var (
@@ -379,20 +378,23 @@ func (m Model) View() string {
 			footerKeyStyle.Render("Ctrl+C/Q:"), "終了",
 		)
 	}
-	footerFrame := footerStyle.GetHorizontalFrameSize()
-	footerInnerWidth := m.width - footerFrame
-	if footerInnerWidth < 0 {
-		footerInnerWidth = 0
+	statusFrame := footerStyle.GetHorizontalFrameSize()
+	statusInnerWidth := m.width - statusFrame
+	if statusInnerWidth < 0 {
+		statusInnerWidth = 0
 	}
-	footerBar := footerStyle.Width(footerInnerWidth).Render(modeBadge + " " + keyHelp)
+	statusBar := footerStyle.Width(statusInnerWidth).Render(modeBadge + " " + keyHelp)
 
-	// Compose layout vertically with adaptive spacers based on height
+	// Compose layout vertically with adaptive spacers based on height.
+	// Shift mode status bar directly below the editor card, keeping it completely
+	// separate from the bottom margin where uim-fep (Anthy) draws preedit and candidates.
 	var sections []string
 	sections = append(sections, headerBar)
 	if m.height >= 16 {
 		sections = append(sections, "")
 	}
 	sections = append(sections, editorRendered)
+	sections = append(sections, statusBar)
 	if m.height >= 13 {
 		sections = append(sections, "")
 	}
@@ -400,37 +402,18 @@ func (m Model) View() string {
 	if m.height >= 15 {
 		sections = append(sections, "")
 	}
-	sections = append(sections, footerBar)
 
 	fullView := lipgloss.JoinVertical(lipgloss.Left, sections...)
 
+	// Park hardware cursor on the dedicated preedit line in the bottom margin (Row m.height + 1).
+	// This lets uim-fep (Anthy) display the in-progress preedit text cleanly at the bottom,
+	// completely avoiding collisions with the editor box and the mode status bar!
+	parkRow := m.height + 1
 	if m.mode == ModeInput {
-		headerHeight := lipgloss.Height(headerBar)
-		spacer1 := 0
-		if m.height >= 16 {
-			spacer1 = 1
-		}
-		editorTitleHeight := lipgloss.Height(editorTitle)
-		// 1-indexed target row:
-		// 1 (1-indexed base) + headerHeight + spacer1 + editorTitleHeight + 1 (editor box top border) + visible row offset in textarea
-		targetY := 1 + headerHeight + spacer1 + editorTitleHeight + 1 + m.textarea.LineInfo().RowOffset
-
-		leftMargin := 0
-		if m.width > cardWidth {
-			leftMargin = (m.width - cardWidth) / 2
-		}
-		// 1-indexed target col:
-		// 1 (1-indexed base) + leftMargin + 1 (left border) + 1 (left padding) + prompt width + text display width
-		promptWidth := runewidth.StringWidth(m.textarea.Prompt)
-		textWidth := m.textarea.LineInfo().CharOffset
-		targetX := 1 + leftMargin + 1 + 1 + promptWidth + textWidth
-
-		SetCursorPosition(targetY, targetX, true)
-		return fullView + fmt.Sprintf("\x1b[?25h\x1b[%d;%dH", targetY, targetX)
+		SetCursorPosition(parkRow, 1, true)
+		return fullView + fmt.Sprintf("\x1b[?25h\x1b[%d;1H", parkRow)
 	}
 
-	// In View mode, hide hardware cursor and park it on the safe margin row below the footer
-	parkRow := m.height + 1
 	SetCursorPosition(parkRow, 1, false)
 	return fullView + fmt.Sprintf("\x1b[?25l\x1b[%d;1H", parkRow)
 }

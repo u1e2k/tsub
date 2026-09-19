@@ -11,21 +11,21 @@ import (
 
 // TestCursorWriter verifies that cursorWriter appends the desired hardware cursor
 // positioning ANSI escape sequence after Bubble Tea's output, ensuring the cursor
-// is moved inside the textarea during ModeInput and parked/hidden during ModeView.
+// is parked in the bottom margin for uim-fep (visible in ModeInput, hidden in ModeView).
 func TestCursorWriter(t *testing.T) {
 	var buf bytes.Buffer
 	cw := &cursorWriter{out: &buf}
 
-	// Test ModeInput (visible, inside textarea)
-	SetCursorPosition(5, 18, true)
+	// Test ModeInput (visible, parked in bottom margin)
+	SetCursorPosition(28, 1, true)
 	_, _ = cw.Write([]byte("rendered frame\x1b[27;H"))
 	got := buf.String()
-	expectedSeq := "\x1b[?25h\x1b[5;18H"
+	expectedSeq := "\x1b[?25h\x1b[28;1H"
 	if !strings.HasSuffix(got, expectedSeq) {
 		t.Errorf("expected output to end with %q, got %q", expectedSeq, got)
 	}
 
-	// Test ModeView (hidden, parked)
+	// Test ModeView (hidden, parked in bottom margin)
 	buf.Reset()
 	SetCursorPosition(28, 1, false)
 	_, _ = cw.Write([]byte("rendered frame\x1b[27;H"))
@@ -67,9 +67,8 @@ func TestUimFepMarginAndLayoutHeight(t *testing.T) {
 	if len(lines) != expectedHeight {
 		t.Errorf("expected %d lines, got %d", expectedHeight, len(lines))
 	}
-	lastLine := lines[len(lines)-1]
-	if !strings.Contains(lastLine, "Enter:") {
-		t.Errorf("expected footer with 'Enter:' on the last rendered line, got: %q", lastLine)
+	if !strings.Contains(view, "Enter:") {
+		t.Errorf("expected view to contain status bar with 'Enter:'")
 	}
 
 	// Case 2: Compact screen (13 rows, e.g. Raspberry Pi handheld LCD)
@@ -89,8 +88,8 @@ func TestUimFepMarginAndLayoutHeight(t *testing.T) {
 }
 
 // TestHardwareCursorPositioning verifies that ANSI cursor position sequences
-// are emitted in View() to position the hardware cursor inside the textarea in ModeInput,
-// and park/hide the cursor in ModeView to prevent uim-fep from overwriting the footer.
+// are emitted in View() to park the hardware cursor on the dedicated preedit line
+// in the bottom margin (Row m.height + 1) in ModeInput, and park/hide the cursor in ModeView.
 func TestHardwareCursorPositioning(t *testing.T) {
 	storage := NewStorage()
 	m, err := InitialModel(storage)
@@ -101,28 +100,17 @@ func TestHardwareCursorPositioning(t *testing.T) {
 	updatedModel, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	m = updatedModel.(Model)
 
-	// In Input mode: cursor should be visible and positioned inside textarea
+	// In Input mode: cursor should be visible and parked on the preedit row in bottom margin (Row 28, Col 1)
 	m.mode = ModeInput
 	viewInputEmpty := m.View()
-	// Target row: 1 + header(1) + spacer1(1) + title(1) + borderTop(1) + rowOffset(0) = 5
-	// Target col: 1 + leftMargin(15) + border(1) + padding(1) + prompt(0) + charOffset(0) = 18
-	expectedEmptySeq := "\x1b[?25h\x1b[5;18H"
+	expectedEmptySeq := "\x1b[?25h\x1b[28;1H"
 	if !strings.HasSuffix(viewInputEmpty, expectedEmptySeq) {
 		t.Errorf("expected view to end with %q, got suffix %q", expectedEmptySeq, viewInputEmpty[len(viewInputEmpty)-len(expectedEmptySeq):])
-	}
-
-	// In Input mode with text: "こんにちは" (10 columns wide) -> col = 18 + 10 = 28
-	m.textarea.SetValue("こんにちは")
-	viewInputText := m.View()
-	expectedTextSeq := "\x1b[?25h\x1b[5;28H"
-	if !strings.HasSuffix(viewInputText, expectedTextSeq) {
-		t.Errorf("expected view to end with %q, got suffix %q", expectedTextSeq, viewInputText[len(viewInputText)-len(expectedTextSeq):])
 	}
 
 	// In View mode: cursor hidden and parked on margin line below footer
 	m.mode = ModeView
 	viewModeView := m.View()
-	// m.height is 27 (30 - 3), so parkRow is 28
 	expectedParkSeq := "\x1b[?25l\x1b[28;1H"
 	if !strings.HasSuffix(viewModeView, expectedParkSeq) {
 		t.Errorf("expected view mode to end with %q, got suffix %q", expectedParkSeq, viewModeView[len(viewModeView)-len(expectedParkSeq):])

@@ -6,7 +6,7 @@ Raspberry Pi 等の小型ディスプレイ（画面行数 12〜14 行程度の�
 
 さらに未確定文字列が長くなると、端末の行末折り返しや改行処理によって画面全体が上スクロールし、ヘッダーや入力欄自体が画面外（上部）へ押し出されてしまう問題も併発していました。
 
-本ドキュメントでは、`uim-fep` のソースコード解析によって判明した描画メカニズム、TUI フレームワーク（Bubble Tea / Lipgloss）との相互作用による根本原因、および完全な解消に至る設計と実装の詳細を後学のために記録します。
+本ドキュメントでは、`uim-fep` のソースコード解析によって判明した描画メカニズム、TUI フレームワーク（Bubble Tea / Lipgloss）との相互作用による根本原因、試行錯誤（入力欄へのカーソル同期 vs ステータスバー移動）の経緯、および完全な解消に至る設計と実装の詳細を後学のために記録します。
 
 ---
 
@@ -60,7 +60,7 @@ static void start_preedit(void)
 ### 3.2 TUI (Bubble Tea / Lipgloss) 側の動作
 Bubble Tea などの多くの TUI フレームワークでは、`View()` メソッドが画面全体の複数行文字列（ANSI エスケープシーケンス付き文字列）を返し、それをターミナルへ一括出力します。
 
-`tsub` の描画順序：
+従来の `tsub` の描画順序：
 ```
 1. HeaderBar       (行 1)
 2. EditorBox       (行 2〜5)
@@ -68,44 +68,8 @@ Bubble Tea などの多くの TUI フレームワークでは、`View()` メソ�
 4. FooterBar       (行 10)  ← [入力] Enter: 投稿 ... 終了
 ```
 
-`View()` の出力文字列は `FooterBar` で終わるため、端末の**ハードウェアカーソルはフッター行の末尾に置かれたまま**待機状態になります。
-
-### 3.3 なぜ被ってしまっていたのか？
-- `uim-fep` は「アプリケーションの論理的な入力欄がどこにあるか」を自動的には知り得ません。
-- 頼りにできる唯一の情報は**「端末のハードウェアカーソル位置」**だけです。
-- `tsub` がハードウェアカーソルを移動させずに放置していたため、`uim-fep` にとっては**「カーソルがフッター行にあるのだから、ユーザーはフッター行に入力したいのだ」**と判断され、フッター行から未確定文字列を描画し始めました。
-- さらに、小型画面で Preedit 文字列が横幅を超えたり行末に達すると、端末が自動改行・スクロールを発生させ、画面上部にあったヘッダーやエディタ枠を押し流してしまっていたのです。
-
----
-
-## 4. 解決策の設計と実装 (Solution Architecture)
-
-解決アプローチは**「モードに応じた正確なハードウェアカーソル座標制御」**です。
-
-### 4.1 入力モード (`ModeInput`)
-ユーザーが入力枠にフォーカスしているときは、エディタ枠内の現在入力行・列へハードウェアカーソルを移動させます。
-
-#### 座標の正確な計算
-端末の画面座標系（1-indexed: `(row, col) = (1, 1)` が左上）に合わせた計算式：
-
-1. **行位置 (`targetY`)**:
-   ```go
-   // 1 (基準) + ヘッダー高 + スペーサー + タイトル高 + 枠線上ボーダー(1) + テキストエリア内行オフセット
-   targetY := 1 + headerHeight + spacer1 + editorTitleHeight + 1 + m.textarea.LineInfo().RowOffset
-   ```
-2. **列位置 (`targetX`)**:
-   `tsub` では入力カードを中央寄せ (`PlaceHorizontal`) にしているため、左右の余白（マージン）を考慮します。
-   ```go
-   leftMargin := (m.width - cardWidth) / 2
-   // 1 (基準) + 左マージン + 左ボーダー(1: ┃) + 左パディング(1) + プロンプト幅 + テキストエリア内文字幅
-   promptWidth := runewidth.StringWidth(m.textarea.Prompt)
-   textWidth := m.textarea.LineInfo().CharOffset
-   targetX := 1 + leftMargin + 1 + 1 + promptWidth + textWidth
-   ```
-   > **Note**: `m.textarea.LineInfo().CharOffset` は `uniseg` / `runewidth` を用いて日本語全角文字（幅2）を正しく計算しているため、日本語混じりのテキストでも正確なカラム位置を指します。
-
-### 3.4 Bubble Tea の致命的な挙動: standardRenderer によるカーソル強制上書き
-さらに深い調査により、TUI 側（Bubble Tea v1 の `standard_renderer.go`）に決定的な動作があることが判明しました。
+### 3.3 Bubble Tea の致命的な挙動: standardRenderer によるカーソル強制上書き
+さらに深い調査により、Bubble Tea v1 の `standard_renderer.go` に決定的な動作があることが判明しました。
 
 ```go
 // github.com/charmbracelet/bubbletea/standard_renderer.go より抜粋
@@ -120,17 +84,53 @@ func (r *standardRenderer) flush() {
 }
 ```
 
-- Bubble Tea は毎フレームを描画する際、**`View()` が返した文字列をターミナルに書き出した直後に、自動的に `ansi.CursorPosition(0, len(newLines))`（最終行のカラム 0、つまりフッター行の先頭）を強制付与して出力する** 仕様になっていました。
-- そのため、単に `View()` の戻り値末尾に ANSI エスケープシーケンス（`\x1b[%d;%dH`）を付与しても、**Bubble Tea の内部レンダラーがその直後にフッター行へのカーソル移動コマンドを送り直して上書きしてしまう**ため、カーソルがフッター行へ引き戻されていたのです。
+- Bubble Tea は毎フレームを描画する際、**`View()` が返した文字列をターミナルに書き出した直後に、自動的に `ansi.CursorPosition(0, len(newLines))`（最終描画行の先頭）を強制付与して出力する** 仕様になっていました。
+- そのため、`tsub` の描画末尾（フッター行）に常にハードウェアカーソルが引き戻されていました。
+- `uim-fep` はカーソル位置（＝フッター行）を取得し、**フッター行の上から未確定文字列を直接上書き描画**していたのです。
 
 ---
 
-## 4. 解決策の設計と実装 (Solution Architecture)
+## 4. 解決アプローチの比較と検証 (Trial & Error)
 
-Bubble Tea のレンダラーによる強制カーソル移動を無効化し、真のハードウェアカーソル位置を制御するため、**出力ストリームのラップ（`cursorWriter`）** を実装しました。
+### アプローチ A: 入力ボックス内へハードウェアカーソルを移動させる方式 (v0.1.18)
+Bubble Tea の出力ストリームを `cursorWriter` でラップし、フレーム描画直後にエディタ枠内の現在カーソル位置へ `\x1b[%d;%dH` を発行する方式を試行。
 
-### 4.1 出力レイヤーでのカーソル制御 (`cursorWriter`)
-Bubble Tea には `tea.WithOutput(io.Writer)` オプションが用意されています。これを利用して `os.Stdout` をラップする `cursorWriter` を作成し、Bubble Tea がフレームを出力した**直後**に希望のカーソル位置シーケンスを発行します。
+- **結果**:
+  確かにカーソルは入力枠内に移動し、未確定文字列も入力枠内に現れるようになった。
+- **課題**:
+  GUI のような独立したフロートウィンドウやインラインインプット機構を持たない CUI / `fbterm` 環境では、`uim-fep` がターミナルの文字セルに直接上書きするため、枠線や周辺文字を破壊したり、入力途中の長い文が不自然に入力枠を突き破るなど、小型画面での視認性・操作性に難があることが判明。
+
+### アプローチ B: ステータスラインを上部へ移設し、最下部余白を Preedit 専用とする方式 (採用: v0.1.20)
+ユーザーからの提案に基づき、設計方針を転換：
+1. **モード表示・操作ヘルプのステータスラインを、入力欄（EditorCard）の直下へ移動**。
+2. タイムラインをその下に配置し、画面最下部（`m.height + 1`）を完全な空行（マージン領域）とする。
+3. ハードウェアカーソルをこの**最下部マージン行（`Row m.height + 1`, `Col 1`）に常時待機（Park）**させる。
+
+#### 新レイアウト構成:
+```text
+┌────────────────────────────────────────────────────────┐
+│ tsub [v0.1.20]  10 posts                               │ (Header)
+│                                                        │
+│ ┏━ いまどうしてる？ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓   │ (EditorCard)
+│ ┃                                                ┃   │
+│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛   │
+│ [入力] Enter: 投稿  Ctrl+O: 改行  Esc: 閲覧  Ctrl+C: 終了│ (StatusBar: ここへ移動！)
+│                                                        │
+│ 20:21 テスト                                           │ (Timeline)
+│ 20:01 続きから読み込み...                              │
+│                                                        │
+│ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ │ (tsub描画境界)
+│ 日本語の入力途中文字がここに綺麗に表示される           │ (uim-fep Preedit 行: Row m.height+1)
+│ anthy-utf8[AnあR]                                      │ (uim-fep Status 行: 最下行)
+└────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 5. 実装の詳細 (Implementation)
+
+### 5.1 出力レイヤーでの確実なカーソル配置 (`cursorWriter`)
+Bubble Tea の `flush()` によるカーソル移動を確実に上書きするため、`tea.WithOutput` でカスタム Writer を導入：
 
 ```go
 // main.go
@@ -157,59 +157,34 @@ func (w *cursorWriter) Write(p []byte) (int, error) {
 }
 ```
 
-これにより、Bubble Tea レンダラーの出力（フッター行への移動）が端末に届いた直後、瞬時に正しいカーソル位置（入力ボックス内または安全マージン行）へ端末カーソルが上書き再配置されます。
+> **重要 (ハマりどころ)**:
+> Bubble Tea は標準出力が `term.File`（`io.ReadWriteCloser` かつ `Fd() uintptr` を実装）でない場合、端末サイズ取得に失敗し `WindowSizeMsg` が発火せず「起動中...」でハングします。
+> `cursorWriter` は必ず `Read`, `Close`, `Fd()` を委譲実装する必要があります。
 
-### 4.2 入力モード (`ModeInput`)
-ユーザーが入力枠にフォーカスしているときは、エディタ枠内の現在入力行・列へハードウェアカーソルを移動させます。
+### 5.2 ステータスバー配置とカーソルパーク (`model.go`)
+```go
+// model.go View()
+sections = append(sections, editorRendered)
+sections = append(sections, statusBar) // エディタ直下に配置
+sections = append(sections, timelineRendered)
 
-#### 座標の正確な計算
-端末の画面座標系（1-indexed: `(row, col) = (1, 1)` が左上）に合わせた計算式：
-
-1. **行位置 (`targetY`)**:
-   ```go
-   // 1 (基準) + ヘッダー高 + スペーサー + タイトル高 + 枠線上ボーダー(1) + テキストエリア内行オフセット
-   targetY := 1 + headerHeight + spacer1 + editorTitleHeight + 1 + m.textarea.LineInfo().RowOffset
-   ```
-2. **列位置 (`targetX`)**:
-   `tsub` では入力カードを中央寄せ (`PlaceHorizontal`) にしているため、左右の余白（マージン）を考慮します。
-   ```go
-   leftMargin := (m.width - cardWidth) / 2
-   // 1 (基準) + 左マージン + 左ボーダー(1: ┃) + 左パディング(1) + プロンプト幅 + テキストエリア内文字幅
-   promptWidth := runewidth.StringWidth(m.textarea.Prompt)
-   textWidth := m.textarea.LineInfo().CharOffset
-   targetX := 1 + leftMargin + 1 + 1 + promptWidth + textWidth
-   ```
-   > **Note**: `m.textarea.LineInfo().CharOffset` は `uniseg` / `runewidth` を用いて日本語全角文字（幅2）を正しく計算しているため、日本語混じりのテキストでも正確なカラム位置を指します。
-
-3. **カーソル同期**:
-   `View()` 内で `SetCursorPosition(targetY, targetX, true)` を呼び出すことで、`cursorWriter` 経由で毎フレームこの位置へ端末カーソルが同期されます。
-
-これにより、`uim-fep` がカーソル位置を問い合わせた際に入力ボックスの現在入力位置が返るため、**入力枠内のその場（On-The-Spot）に未確定文字列が綺麗に描画**されます。
+// uim-fep (Anthy) の未確定文字列描画用として、最下部余白行 (m.height + 1) にカーソルを退避
+parkRow := m.height + 1
+if m.mode == ModeInput {
+    SetCursorPosition(parkRow, 1, true)
+    return fullView + fmt.Sprintf("\x1b[?25h\x1b[%d;1H", parkRow)
+}
+SetCursorPosition(parkRow, 1, false)
+return fullView + fmt.Sprintf("\x1b[?25l\x1b[%d;1H", parkRow)
+```
 
 ---
 
-### 4.2 閲覧モード (`ModeView`)
-閲覧モードではタイムラインをスクロール（`j` / `k` 等）して閲覧するため、文字入力は行われません。
+## 6. 設計上の重要なポイントと教訓 (Key Learnings)
 
-1. カーソルを非表示化（`\x1b[?25l`）する。
-2. さらに、万一 IME が有効なままキー入力が行われた場合に備え、カーソルを**フッターより下の安全なマージン行（`m.height + 1`）へ退避**させる：
-   ```go
-   parkRow := m.height + 1
-   return fullView + fmt.Sprintf("\x1b[?25l\x1b[%d;1H", parkRow)
-   ```
-
-これにより、閲覧中にキーを押してもフッターの表示が上書き破壊される事故を完全に防止します。
-
----
-
-## 5. 設計上の重要なポイントと教訓 (Key Learnings)
-
-1. **GUI と CUI (コンソール) での IME 動作の違い**:
-   - GUI（GTK/Qt/Windows/macOS）では OS やウィンドウマネージャ経由で入力エリアの矩形（Rect）を通知しますが、CUI/コンソール環境では **VT100/ANSI のハードウェアカーソル位置（CSI 6 n）が唯一の接点**となります。
-2. **TUI 仮想カーソルとハードウェアカーソルの分離**:
-   - `bubbles/textarea` や多くの TUI コンポーネントは、端末のハードウェアカーソルを隠し、文字属性（反転表示や `_` など）で「仮想カーソル」を描画することが主流です。
-   - しかし、`uim-fep` や `fbterm` などのコンソール FEP 環境では、**ハードウェアカーソルを本物の入力位置に同期させておかないと、IME が描画位置を見失う**という罠があります。
-3. **下部ステータスラインと画面行数マージン**:
-   - `uim-fep` は最下行（`ws_row - 1`）を自身のステータス行（`anthy-utf8[AnあR]`）として使用します。
-   - そのため、TUI 側は `WindowSizeMsg` で得られる画面行数から 2〜3 行のマージン（`TSUB_BOTTOM_MARGIN`）を差し引いて描画高さを決める必要があります。
-   - **「高さを引くだけでは不十分で、カーソル位置の制御とセットで初めて完璧に機能する」** というのが今回の最も重要な知見です。
+1. **コンソール IME (FEP) と CUI アプリの共存モデル**:
+   - GUI と異なり、VT100 端末のハードウェアカーソルは画面上に**たった1つ**しか存在しません。
+   - アプリケーションが画面最下部まで目一杯 TUI コンポーネントを詰め込むと、FEP は既存の表示要素を上書きせざるを得なくなります。
+   - **「TUI の描画領域を意図的に 2〜3 行空け、そこにハードウェアカーソルを待機させる」** ことで、FEP 専用の独立した表示スペースを確保するのが Linux コンソール環境における最も堅牢で安定した設計パターンです。
+2. **ステータスバーの配置柔軟性**:
+   - 「ステータスバーや操作ヘルプは常に最下部にあるもの」という固定観念を捨て、エディタカードの直下に置くことで、エディタと操作ガイドの視線移動が減少し、かつ最下部の IME 領域との衝突を完全にゼロにできます。
