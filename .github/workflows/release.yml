@@ -125,14 +125,12 @@ jobs:
               gh release create "$TAG_NAME" dist/* \
                 --repo "${{ github.repository }}" \
                 --title "$TAG_NAME" \
-                --generate-notes \
-                --clobber
+                --generate-notes
             else
               gh release create "$TAG_NAME" dist/* \
                 --repo "${{ github.repository }}" \
                 --target "${{ github.sha }}" \
                 --title "$TAG_NAME" \
-                --generate-notes \
-                --clobber
+                --generate-notes
             fi
           fi
