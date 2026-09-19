@@ -174,17 +174,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.width < 0 {
 			m.width = 0
 		}
-		// Reserve margin lines at the bottom for uim-fep (preedit buffer + status line).
-		// Default to 4 lines (configurable via TSUB_BOTTOM_MARGIN env var).
-		bottomMargin := 4
+		// Reserve bottom lines for uim-fep (status line + preedit line + safe margin).
+		// Default to 3 lines (configurable via TSUB_BOTTOM_MARGIN env var).
+		bottomMargin := 3
 		if val := os.Getenv("TSUB_BOTTOM_MARGIN"); val != "" {
 			if n, err := strconv.Atoi(val); err == nil && n >= 0 {
 				bottomMargin = n
 			}
 		}
 		m.height = msg.Height - bottomMargin
-		if m.height < 0 {
-			m.height = 0
+		if m.height < 5 {
+			m.height = 5
 		}
 		m.resizeComponents()
 		m.ready = true
@@ -224,16 +224,29 @@ func (m *Model) resizeComponents() {
 	}
 	m.textarea.SetWidth(taInnerWidth)
 
-	// Vertical layout:
-	// Header: 1 line
-	// Spacer: 1 line
-	// Editor Box: 5 lines (title 1 line + border & content 4 lines)
-	// Spacer: 1 line
-	// Spacer: 1 line
-	// Footer: 1 line
-	// Total fixed height: 1 + 1 + 5 + 1 + 1 + 1 = 10 lines
-	fixedHeight := 10
-	vpHeight := m.height - fixedHeight
+	// Adapt textarea height based on available screen height:
+	// Use 1 line for compact screens (m.height < 14), 2 lines for normal screens.
+	taHeight := 2
+	if m.height < 14 {
+		taHeight = 1
+	}
+	m.textarea.SetHeight(taHeight)
+
+	cardLines := taHeight + 2 // border top + content + border bottom
+
+	spacers := 0
+	if m.height >= 16 {
+		spacers++
+	}
+	if m.height >= 13 {
+		spacers++
+	}
+	if m.height >= 15 {
+		spacers++
+	}
+
+	fixedLines := 1 /* header */ + 1 /* editorTitle */ + cardLines + 1 /* footer */ + spacers
+	vpHeight := m.height - fixedLines
 	if vpHeight < 1 {
 		vpHeight = 1
 	}
@@ -344,15 +357,21 @@ func (m Model) View() string {
 	}
 	footerBar := footerStyle.Width(footerInnerWidth).Render(modeBadge + " " + keyHelp)
 
-	// Compose layout vertically
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		headerBar,
-		"",
-		editorRendered,
-		"",
-		timelineRendered,
-		"",
-		footerBar,
-	)
+	// Compose layout vertically with adaptive spacers based on height
+	var sections []string
+	sections = append(sections, headerBar)
+	if m.height >= 16 {
+		sections = append(sections, "")
+	}
+	sections = append(sections, editorRendered)
+	if m.height >= 13 {
+		sections = append(sections, "")
+	}
+	sections = append(sections, timelineRendered)
+	if m.height >= 15 {
+		sections = append(sections, "")
+	}
+	sections = append(sections, footerBar)
+
+	return lipgloss.JoinVertical(lipgloss.Left, sections...)
 }

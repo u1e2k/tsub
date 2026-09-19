@@ -8,8 +8,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// TestUimFepMarginAndLayoutHeight verifies that WindowSizeMsg allocates msg.Height - 4
-// to leave the bottom rows free for uim-fep (Anthy) status, preedit, and candidate lines.
+// TestUimFepMarginAndLayoutHeight verifies that WindowSizeMsg allocates msg.Height - 3
+// to leave the bottom rows free for uim-fep (Anthy) status and preedit lines,
+// and that renderedHeight strictly equals expectedHeight on both standard and compact screens.
 func TestUimFepMarginAndLayoutHeight(t *testing.T) {
 	storage := NewStorage()
 	m, err := InitialModel(storage)
@@ -17,14 +18,15 @@ func TestUimFepMarginAndLayoutHeight(t *testing.T) {
 		t.Fatalf("failed to init model: %v", err)
 	}
 
+	// Case 1: Standard screen (30 rows)
 	terminalHeight := 30
 	terminalWidth := 100
 	updatedModel, _ := m.Update(tea.WindowSizeMsg{Width: terminalWidth, Height: terminalHeight})
 	m = updatedModel.(Model)
 
-	expectedHeight := terminalHeight - 4
+	expectedHeight := terminalHeight - 3
 	if m.height != expectedHeight {
-		t.Fatalf("expected m.height = %d (msg.Height - 4), got %d", expectedHeight, m.height)
+		t.Fatalf("expected m.height = %d (msg.Height - 3), got %d", expectedHeight, m.height)
 	}
 
 	view := m.View()
@@ -33,7 +35,6 @@ func TestUimFepMarginAndLayoutHeight(t *testing.T) {
 		t.Errorf("expected rendered view height to be %d, got %d", expectedHeight, renderedHeight)
 	}
 
-	// Verify footer is at the bottom of the rendered view (row H - 4, i.e. 5th line from bottom)
 	lines := strings.Split(view, "\n")
 	if len(lines) != expectedHeight {
 		t.Errorf("expected %d lines, got %d", expectedHeight, len(lines))
@@ -41,6 +42,21 @@ func TestUimFepMarginAndLayoutHeight(t *testing.T) {
 	lastLine := lines[len(lines)-1]
 	if !strings.Contains(lastLine, "Enter:") {
 		t.Errorf("expected footer with 'Enter:' on the last rendered line, got: %q", lastLine)
+	}
+
+	// Case 2: Compact screen (13 rows, e.g. Raspberry Pi handheld LCD)
+	compactModel, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 13})
+	mCompact := compactModel.(Model)
+
+	expectedCompactHeight := 13 - 3 // 10 lines
+	if mCompact.height != expectedCompactHeight {
+		t.Fatalf("expected compact height %d, got %d", expectedCompactHeight, mCompact.height)
+	}
+
+	compactView := mCompact.View()
+	compactRenderedHeight := lipgloss.Height(compactView)
+	if compactRenderedHeight != expectedCompactHeight {
+		t.Errorf("expected compact rendered height %d, got %d", expectedCompactHeight, compactRenderedHeight)
 	}
 }
 
