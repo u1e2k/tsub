@@ -317,7 +317,7 @@ func (m Model) View() string {
 	var modeBadge string
 	var keyHelp string
 	if m.mode == ModeInput {
-		modeBadge = footerModeBadgeInput.Render("入力")
+		modeBadge = footerModeBadgeInput.Render("入力") + " " + headerImeBadge.Render("Anあ")
 		keyHelp = fmt.Sprintf(" %s %s  %s %s  %s %s",
 			footerKeyStyle.Render("Enter:"), "投稿",
 			footerKeyStyle.Render("Esc:"), "閲覧",
@@ -342,13 +342,14 @@ func (m Model) View() string {
 	rightContent := modeBadge + " " + keyHelp
 	leftWidth := lipgloss.Width(leftContent)
 	rightWidth := lipgloss.Width(rightContent)
+	badgeWidth := lipgloss.Width(modeBadge)
 
 	var headerContent string
-	if leftWidth+rightWidth+1 <= headerInnerWidth {
+	if leftWidth+rightWidth <= headerInnerWidth {
 		gap := headerInnerWidth - leftWidth - rightWidth
 		headerContent = leftContent + strings.Repeat(" ", gap) + rightContent
-	} else if leftWidth+lipgloss.Width(modeBadge)+1 <= headerInnerWidth {
-		gap := headerInnerWidth - leftWidth - lipgloss.Width(modeBadge)
+	} else if leftWidth+badgeWidth <= headerInnerWidth {
+		gap := headerInnerWidth - leftWidth - badgeWidth
 		headerContent = leftContent + strings.Repeat(" ", gap) + modeBadge
 	} else {
 		headerContent = leftContent
