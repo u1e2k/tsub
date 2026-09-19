@@ -2,8 +2,11 @@ name: Release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -55,6 +58,7 @@ jobs:
 
   release:
     name: Create Release
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-latest
     permissions:

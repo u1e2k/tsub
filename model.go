@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 )
 
 // Mode represents the current interaction mode.
@@ -308,5 +309,31 @@ func (m Model) View() string {
 	)
 
 	// Horizontally center the layout across the terminal width
-	return lipgloss.PlaceHorizontal(m.width, lipgloss.Center, content)
+	fullView := lipgloss.PlaceHorizontal(m.width, lipgloss.Center, content)
+
+	if m.mode == ModeInput {
+		headerHeight := lipgloss.Height(headerBar)
+		editorTitleHeight := lipgloss.Height(editorTitle)
+		// 1-indexed target row:
+		// headerHeight + 1 (empty line) + editorTitleHeight + 1 (editor box top border) + 1 (1-indexed base) + row offset
+		targetY := headerHeight + 1 + editorTitleHeight + 1 + 1 + m.textarea.LineInfo().RowOffset + m.textarea.Line()
+
+		boxWidth := lipgloss.Width(editorBox)
+		leftMargin := 0
+		if m.width > boxWidth {
+			leftMargin = (m.width - boxWidth) / 2
+		}
+		// 1-indexed target col:
+		// 1 (1-indexed base) + leftMargin + 1 (left border) + 1 (left padding) + prompt width + text display width
+		promptWidth := runewidth.StringWidth(m.textarea.Prompt)
+		textWidth := m.textarea.LineInfo().CharOffset
+		targetX := 1 + leftMargin + 1 + 1 + promptWidth + textWidth
+
+		// Move hardware cursor to input position and ensure it is visible
+		cursorSeq := fmt.Sprintf("\x1b[?25h\x1b[%d;%dH", targetY, targetX)
+		return fullView + cursorSeq
+	}
+
+	// Hide hardware cursor in view mode
+	return fullView + "\x1b[?25l"
 }
