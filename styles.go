@@ -52,6 +52,16 @@ var (
 				Foreground(colorSky).
 				Bold(true)
 
+	editorPromptDimStyle = lipgloss.NewStyle().
+				Foreground(colorBorderDim)
+
+	editorTitleActive = lipgloss.NewStyle().
+				Foreground(colorSky).
+				Bold(true)
+
+	editorTitleDim = lipgloss.NewStyle().
+				Foreground(colorTextDim)
+
 	// Timeline styles
 	timelineItemTime = lipgloss.NewStyle().
 				Foreground(colorTime).

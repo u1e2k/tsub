@@ -43,9 +43,11 @@ func InitialModel(storage *Storage) (Model, error) {
 	}
 
 	ta := textarea.New()
-	ta.Placeholder = "いまどうしてる？ (Enter: 投稿 / Esc: 閲覧)"
+	ta.Placeholder = ""
 	ta.Focus()
-	ta.Prompt = ""
+	ta.Prompt = "❯ "
+	ta.FocusedStyle.Prompt = editorPromptStyle
+	ta.BlurredStyle.Prompt = editorPromptDimStyle
 	ta.CharLimit = 0
 	ta.ShowLineNumbers = false
 	ta.SetHeight(2)
@@ -209,10 +211,10 @@ func (m *Model) resizeComponents() {
 
 	// Vertical layout:
 	// Header: ~2 lines (padding + content)
-	// Slit Editor: ~4 lines (border + 2 lines content)
+	// Slit Editor: ~5 lines (title 1 line + border & content 4 lines)
 	// Spacers / margins: ~2 lines
 	// Footer: ~2 lines
-	fixedHeight := 2 + 4 + 2 + 2
+	fixedHeight := 2 + 5 + 2 + 2
 	vpHeight := m.height - fixedHeight
 	if vpHeight < 3 {
 		vpHeight = 3
@@ -254,11 +256,20 @@ func (m Model) View() string {
 	headerBar := headerStyle.Render(brand + headerInfo)
 
 	// 2. Slit Editor Box
+	var editorTitle string
 	editorBoxStyle := editorActiveBox
-	if m.mode != ModeInput {
+	if m.mode == ModeInput {
+		editorTitle = editorTitleActive.Render("💭 いまどうしてる？") + " " + editorTitleDim.Render("(Enter: 投稿 / Esc: 閲覧)")
+	} else {
 		editorBoxStyle = editorInactiveBox
+		editorTitle = editorTitleDim.Render("💭 いまどうしてる？ (i: 投稿入力)")
 	}
-	editorRendered := editorBoxStyle.Width(m.viewport.Width).Render(m.textarea.View())
+	editorBox := editorBoxStyle.Width(m.viewport.Width).Render(m.textarea.View())
+	editorRendered := lipgloss.JoinVertical(
+		lipgloss.Left,
+		editorTitle,
+		editorBox,
+	)
 
 	// 3. Timeline Viewport
 	timelineRendered := m.viewport.View()
