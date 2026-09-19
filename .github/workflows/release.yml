@@ -12,8 +12,42 @@ permissions:
   contents: write
 
 jobs:
+  version:
+    name: Determine Version
+    runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ steps.version.outputs.tag_name }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG_NAME="${{ github.ref_name }}"
+          else
+            git fetch --tags --force
+            LATEST_TAG=$(git tag -l "v[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname | head -n 1)
+            if [ -z "$LATEST_TAG" ]; then
+              TAG_NAME="v0.1.0"
+            else
+              VERSION="${LATEST_TAG#v}"
+              MAJOR=$(echo "$VERSION" | cut -d. -f1)
+              MINOR=$(echo "$VERSION" | cut -d. -f2)
+              PATCH=$(echo "$VERSION" | cut -d. -f3)
+              NEW_PATCH=$((PATCH + 1))
+              TAG_NAME="v${MAJOR}.${MINOR}.${NEW_PATCH}"
+            fi
+          fi
+          echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
+          echo "Determined release tag: ${TAG_NAME}"
+
   build:
     name: Build Binary
+    needs: version
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -47,8 +81,9 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           GOARM: ${{ matrix.goarm }}
           CGO_ENABLED: 0
+          TAG_NAME: ${{ needs.version.outputs.tag_name }}
         run: |
-          go build -trimpath -ldflags="-s -w" -o dist/${{ matrix.output_name }} .
+          go build -trimpath -ldflags="-s -w -X main.Version=${TAG_NAME}" -o dist/${{ matrix.output_name }} .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -58,38 +93,11 @@ jobs:
 
   release:
     name: Create Release
-    needs: build
+    needs: [version, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Determine version
-        id: version
-        run: |
-          if [ "${{ github.ref_type }}" = "tag" ]; then
-            TAG_NAME="${{ github.ref_name }}"
-          else
-            git fetch --tags --force
-            LATEST_TAG=$(git tag -l "v[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname | head -n 1)
-            if [ -z "$LATEST_TAG" ]; then
-              TAG_NAME="v0.1.0"
-            else
-              VERSION="${LATEST_TAG#v}"
-              MAJOR=$(echo "$VERSION" | cut -d. -f1)
-              MINOR=$(echo "$VERSION" | cut -d. -f2)
-              PATCH=$(echo "$VERSION" | cut -d. -f3)
-              NEW_PATCH=$((PATCH + 1))
-              TAG_NAME="v${MAJOR}.${MINOR}.${NEW_PATCH}"
-            fi
-          fi
-          echo "TAG_NAME=${TAG_NAME}" >> $GITHUB_ENV
-          echo "Determined release tag: ${TAG_NAME}"
-
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -99,6 +107,7 @@ jobs:
       - name: Create GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.version.outputs.tag_name }}
         run: |
           if [ "${{ github.ref_type }}" = "tag" ]; then
             gh release create "$TAG_NAME" dist/* \
